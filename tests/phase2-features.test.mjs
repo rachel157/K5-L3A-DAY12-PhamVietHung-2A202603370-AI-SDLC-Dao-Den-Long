@@ -482,7 +482,7 @@ test("pause freezes sim_tick, time_left_s, cooldowns, and TTL while incrementing
   const snap5 = lines.find((l) => l.type === "snapshot" && l.tick === 5);
   assert.equal(snap5.state, "paused");
   assert.equal(snap5.sim_tick, 0);
-  assert.equal(snap5.time_left_s, 300);
+  assert.equal(snap5.time_left_s, 240); // [THAY THẾ v1.2] Night 1 duration 240s
   assert.equal(snap5.player.dash_cd_s, 1);
   assert.equal(snap5.motes[0].ttl_s, 2);
 
@@ -499,11 +499,12 @@ test("pause freezes sim_tick, time_left_s, cooldowns, and TTL while incrementing
 });
 
 test("full 21,600-tick Night 3 headless run completes well under 30 seconds", () => {
+  // [THAY THẾ v1.2] Night 3 default duration is 300s (18,000 ticks); override time_left_s: 360 to retain the 21,600-tick stress benchmark.
   const startMs = performance.now();
   const lines = runHeadlessSimulation({
     seed: 7,
     night: 3,
-    scenario: { player: { flames: 9999 }, wind_enabled: true },
+    scenario: { player: { flames: 9999 }, time_left_s: 360, wind_enabled: true },
     maxTicks: 21600,
     snapshotEvery: 60,
   });

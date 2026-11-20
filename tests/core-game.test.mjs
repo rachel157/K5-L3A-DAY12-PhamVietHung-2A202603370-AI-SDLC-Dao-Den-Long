@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { DEFAULT_TUNING } from "../dist-cli/core/contract.js";
 import {
   createGameWorld,
   runHeadlessSimulation,
   toSnapshot,
 } from "../dist-cli/core/game.js";
 
-test("default Night 1 initialization matches Ticket-02 counts and spawns 2 shades at tick 300", () => {
+test("default Night 1 initialization matches Contract v1.2 counts and spawns 2 shades at tick 300", () => {
   const lines0 = runHeadlessSimulation({ seed: 7, night: 1, maxTicks: 0 });
   const snap0 = lines0[0];
   assert.equal(snap0.type, "snapshot");
@@ -14,15 +15,24 @@ test("default Night 1 initialization matches Ticket-02 counts and spawns 2 shade
   assert.equal(snap0.tick, 0);
   assert.equal(snap0.sim_tick, 0);
   assert.equal(snap0.state, "playing");
-  assert.equal(snap0.time_left_s, 300);
+  assert.equal(snap0.time_left_s, 240); // [THAY THẾ v1.2] Night 1 duration 240s (was 300s)
   assert.equal(snap0.score, 0);
   assert.deepEqual(snap0.player.pos, [0, 0, 0]);
   assert.equal(snap0.player.flames, 3);
   assert.equal(snap0.player.carried, 0);
+  assert.equal(snap0.player.capacity, 10);
   assert.equal(snap0.player.invuln, false);
   assert.equal(snap0.player.grounded, true);
   assert.equal(snap0.lanterns.length, 5);
-  assert.deepEqual(snap0.lanterns[0], { id: "L1", pos: [0, 0, 25], lit: false, deposited: 0 });
+  assert.deepEqual(snap0.lanterns[0], {
+    id: "L1",
+    pos: [0, 0, 25],
+    lit: false,
+    deposited: 0,
+    fuel: 0,
+    ever_lit: false,
+    relit_count: 0,
+  });
   assert.equal(snap0.motes_active, 20);
   assert.equal(snap0.motes.length, 20);
   assert.equal(snap0.motes[0].kind, "random");
@@ -84,6 +94,8 @@ test("zero-order hold persists absent fields, edge-triggers interact, and picks 
   const lines = runHeadlessSimulation({
     seed: 1,
     night: 1,
+    // [THAY THẾ v1.2] Isolate edge-trigger + !lit tiebreak from L1 decaying below 100 and stealing the tick-3 interact as refuel (L1 < L2).
+    tuning: { ...DEFAULT_TUNING, fuel_decay_per_s: 0 },
     scenario: {
       player: { pos: [0, 0, 25], carried: 10, flames: 3 },
       random_motes: false,
@@ -109,8 +121,8 @@ test("zero-order hold persists absent fields, edge-triggers interact, and picks 
   assert.equal(deposits[1].tick, 4);
   assert.deepEqual(deposits[1].data, { lantern_id: "L2", amount: 8, deposited: 8 });
   const end = lines[lines.length - 1];
-  // score = 2*10 + 100 (L1 lit) + 8*10 = 200
-  assert.equal(end.score, 200);
+  // [THAY THẾ v1.2] score = 2*5 + 100 (L1 lit) + 8*5 = 150
+  assert.equal(end.score, 150);
 });
 
 test("scenario patches lanterns without events/score and pre-seeds explicit IDs without collision", () => {
@@ -136,7 +148,8 @@ test("scenario patches lanterns without events/score and pre-seeds explicit IDs 
   assert.equal(new Set(snap0.shades.map((s) => s.id)).size, 2);
 });
 
-test("mote pickup respects carry_capacity=10 and winning applies all_lit bonus before dawn", () => {
+test("mote pickup respects capacity=10, all lit does not win early, and dawn_survived pays fuel+flame bonuses", () => {
+  // [THAY THẾ v1.2 per ADR-001] all_lit early win removed; win occurs at dawn (dawn_survived) with fuel + flame bonuses
   const lines = runHeadlessSimulation({
     seed: 2,
     night: 1,
@@ -149,29 +162,40 @@ test("mote pickup respects carry_capacity=10 and winning applies all_lit bonus b
         [0, 0, 0.8],
       ],
       lanterns: [
-        { id: "L1", lit: true },
-        { id: "L2", lit: true },
-        { id: "L3", lit: true },
-        { id: "L4", lit: true },
+        { id: "L1", lit: true, fuel: 80 },
+        { id: "L2", lit: true, fuel: 80 },
+        { id: "L3", lit: true, fuel: 80 },
+        { id: "L4", lit: true, fuel: 80 },
         { id: "L5", pos: [0, 0, 1.5], deposited: 0 },
       ],
-      time_left_s: 1 / 60,
+      time_left_s: 2 / 60,
     },
-    frames: [{ tick: 0, interact: true }],
+    frames: [{ tick: 0, interact: true }, { tick: 1, interact: false }],
     maxTicks: 10,
     snapshotEvery: 1,
   });
 
   const picked = lines.filter((l) => l.type === "event" && l.name === "mote_picked");
-  assert.equal(picked.length, 1);
+  // Tick 0 hits capacity=10 (M2 stays unpicked while carried=10); after lighting L5 drops carried to 0, tick 1 picks M2.
+  assert.equal(picked.length, 2);
+  assert.equal(picked[0].tick, 1);
   assert.equal(picked[0].data.carried, 10);
+  assert.equal(picked[1].tick, 2);
+  assert.equal(picked[1].data.carried, 1);
+
+  // At tick 1 all 5 lanterns are lit, M2 still unpicked on ground at end of tick 0, and night stays playing until tick 2 dawn
+  const snap1 = lines.find((l) => l.type === "snapshot" && l.tick === 1);
+  assert.equal(snap1.motes.length, 1);
+  assert.equal(snap1.state, "playing");
+  assert.equal(snap1.lanterns.every((l) => l.lit), true);
 
   const gameOver = lines.find((l) => l.type === "event" && l.name === "game_over");
-  assert.deepEqual(gameOver?.data, { result: "won", reason: "all_lit" });
+  assert.deepEqual(gameOver?.data, { result: "won", reason: "dawn_survived" });
 
-  // score = 10*10 (deposited) + 100 (lantern) + 0*2 (0s left) + 2*50 (flames) = 300
+  // Dawn tick 2 fuels: L1..L4 = 80 - 2/60 -> floor=79; L5 = 100 - 1/60 -> floor=99
+  // score = 10*5 (deposit) + 100 (L5 lit) + 4*(50+79) + 1*(50+99) + 2*50 (flames) = 150 + 516 + 149 + 100 = 915
   const end = lines[lines.length - 1];
-  assert.deepEqual(end, { type: "end", ticks: 1, state: "won", score: 300 });
+  assert.deepEqual(end, { type: "end", ticks: 2, state: "won", score: 915 });
 });
 
 test("pulse uses 3D distance <= 5m from player center, stuns 120 ticks, pushes 4m over 15 ticks, cooldown 180 ticks", () => {
