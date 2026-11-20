@@ -10,14 +10,15 @@
 - **Công việc đã giao AI:**
   1. Phân tích repo khung đề bài và kiểm tra công cụ trên máy (Node `v22.16.0`, Python `3.13.12`, Docker `28.0.1`).
   2. Thiết kế kiến trúc tách `src/core/` – `src/web/` – `src/cli/` và AI harness (spec tại `docs/superpowers/specs/2026-11-20-checkpoint-0-design.md`).
-  3. Lập kế hoạch 5 task và triển khai theo chu trình TDD (Red → Green → Commit) + review độc lập cuối nhánh.
-- **Lỗi / thiếu sót phát hiện & cách xử lý:**
-  - *Builder check subagent* phát hiện tài liệu thiết kế nháp ban đầu chưa ghi rõ target runtime là Google Antigravity, chưa ghi rõ schema `.agents/hooks.json` (Antigravity chạy hook trong CWD `.agents/` và đòi hỏi JSON thuần trên stdout), và cần `npm test` luôn biên dịch lại CLI để tránh test code cũ → Đã sửa dứt điểm trong spec và chốt test cho hook ở `tests/stop-hook.test.mjs`.
+  3. Lập kế hoạch 5 task (`docs/superpowers/plans/2026-11-20-checkpoint-0.md`) và triển khai theo chu trình TDD (Red → Green → Commit) kèm kiểm chứng clone sạch và review độc lập cuối nhánh.
+- **Lỗi / sự cố phát hiện & cách xử lý:**
+  - *Builder check subagent* phát hiện tài liệu thiết kế nháp ban đầu chưa ghi rõ target runtime là Google Antigravity, chưa ghi rõ schema `.agents/hooks.json` (Antigravity chạy hook trong CWD `.agents/` và đòi hỏi JSON thuần trên stdout), và cần `npm test` luôn biên dịch lại CLI để tránh test code cũ → Đã sửa dứt điểm trong spec và viết test kiểm chứng ở `tests/stop-hook.test.mjs`.
+  - *Lỗi shell Windows PowerShell khi truyền cờ CLI qua npm:* Lệnh `npm run headless -- --seed 7 --ticks 20` bị PowerShell nuốt dấu `--` đầu tiên khiến `npm` ăn mất `--seed`. Cách xử lý: dùng `npm run headless '--' --seed 7 --ticks 20` trên PowerShell hoặc gọi thẳng `node dist-cli/cli/headless.js --seed 7 --ticks 20` (hoạt động đồng nhất trên mọi shell).
 - **Chiến lược tiết kiệm token:**
   - Dùng `node:test` có sẵn của Node.js thay vì cài thư viện test ngoài và config phức tạp.
   - Giữ `AGENTS.md` ngắn gọn (27 dòng) để không đốt ngữ cảnh ở mọi lượt.
   - Chọn thực thi inline (`executing-plans`) kèm 1 lượt review độc lập ở cuối thay vì gọi subagent riêng cho từng task nhỏ.
-- **Ước tính token/chi phí CP0:** *Sẽ cập nhật sau khi hoàn tất Task 5.*
+- **Ước tính token/chi phí CP0:** Hoàn thành CP0 trong 1 phiên tương tác liên tục (~15–20 lượt gọi công cụ, cộng 1 subagent builder-check và 1 subagent final code-review; chưa phát sinh vòng sửa lặp dư thừa).
 
 ---
 
