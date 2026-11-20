@@ -62,8 +62,12 @@
 
 ---
 
-## Phase 4 (Ticket-04) — *Chờ phát hành*
+## Phase 4 (TICKET-04 — "Bình minh: phát hành v1.0.0", Contract v1.3)
 
-| ID Yêu cầu | Ngưỡng / Số đo bắt buộc | Cách đo | Kết quả thật | Trạng thái |
+| ID Yêu cầu | Chỗ mơ hồ / Quyết định thiết kế | Giả định áp dụng & Lý do | Tiêu chí kiểm chứng | Trạng thái |
 |---|---|---|---|---|
-| — | Chờ Ticket-04 | — | — | Chưa phát hành |
+| P4-01 | `bench_cmd` chạy WebGL `1280×720` đa nền tảng không phụ thuộc thư viện nặng | `node dist-cli/cli/bench.js` khởi tạo HTTP static server cho `dist/`, tự tìm Chrome/Edge/Chromium (`--app=... --window-size=1280,720 --disable-gpu-vsync --disable-frame-rate-limit`), tải `?bench=1&seed=42&duration=30` (200 Bóng Mực `wander` + 100 đom đóm + L1–L3 `fuel=100`, camera tròn `R=30, Y=15`, `15s/vòng`, warm-up `3s`). `peak_mem_mb` ghi `null` cho bản web đa tiến trình (giải thích trong `bench.json`/README theo đúng Contract). | `bench.json` hợp lệ, `avg_fps`, `p1_low_fps`, `frame_ms_p95`, `frames`, `load_ms` đo từ khung hình WebGL thật. | Đang triển khai |
+| P4-02 | `soak_cmd` 10 Đêm liên tiếp (`seed 7 + i`) & PRNG input ngẫu nhiên | `node dist-cli/cli/soak.js --seed 7 --nights 10 --out soak.json` chạy xoay vòng Đêm `1 → 2 → 3` (`i = 0..9`, `seed = 7 + i`), dùng PRNG tách biệt cho input ngẫu nhiên (30 tick đổi hướng, 5% nhảy, 3% lướt, 2% tỏa sáng, 10% tương tác). Đo `mem_start_mb` sau khi nạp Đêm 1 và `mem_end_mb` sau khi kết thúc Đêm 10. | `crashes === 0`, `mem_end_mb <= 1.2 * mem_start_mb`, xuất `soak.json`. | Đang triển khai |
+| P4-03 | Bảng xếp hạng cục bộ & `<run_cmd> --export-leaderboard out.json` | `run_cmd` là `node dist-cli/cli/run.js`: phục vụ `dist/` + API `/api/leaderboard` lưu trên đĩa (`~/.dao-den-long/leaderboard.json`, fallback `localStorage` nếu chạy tĩnh), hỗ trợ `--export-leaderboard <out.json>` xuất Top 10 (`score` giảm dần, bằng điểm thì `achieved_at` sớm hơn đứng trên). Tên `3–12` ký tự hỗ trợ `[A-Za-z0-9_]` và chữ cái tiếng Việt có dấu (`^[\p{L}0-9_]{3,12}$`). | Unit test + CLI test `--export-leaderboard` & UI lưu/xem Top 10. | Đang triển khai |
+| P4-04 | Đổi phím, phụ đề & mũi tên Bóng Mực, Giảm chuyển động, cỡ chữ `>= 18px` & `×1.25` | Lưu `keybinds`, `reduceMotion`, `largeText` vào `localStorage`. Toàn bộ CSS HUD ở `1280×720` tối thiểu `18px`, bật `largeText` nhân biến `--font-scale: 1.25`. Khi `shade_spawned` hiện phụ đề + mũi tên mép màn hình chỉ hướng Bóng Mực. | Test `settings.ts`, `visualHelpers.js`, kiểm CSS `>= 18px` & `1.25`. | Đang triển khai |
+| P4-05 | `demo.mp4` (< 5 phút) & GitHub Release `v1.0.0` trên máy chưa có `ffmpeg` / `gh` CLI | Tự động chụp ảnh thật (`1280×720`) vào `docs/demo/` cho `README.md`, viết đầy đủ `LICENSE`, `CREDITS.md`, `CHANGELOG.md`, `docs/notes/retro.md`, `docs/proof/phase-4/README.md`, và ghi nhận trung thực bước quay `.mp4` / publish GitHub Release `v1.0.0` cần thao tác người dùng (kèm hướng dẫn chi tiết). | Ảnh chụp thật, tài liệu đủ 4 phase, clean-clone `<= 3` lệnh. | Đang triển khai |

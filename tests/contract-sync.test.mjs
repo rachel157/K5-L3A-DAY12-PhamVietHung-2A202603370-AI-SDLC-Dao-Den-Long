@@ -9,10 +9,13 @@ import {
   round1,
 } from "../dist-cli/core/contract.js";
 
-test("game.contract.json matches Test Contract v1.2 schema and DEFAULT_TUNING 1:1", () => {
+test("game.contract.json matches Test Contract v1.3 schema and DEFAULT_TUNING 1:1", () => {
   const contract = JSON.parse(fs.readFileSync(path.resolve("game.contract.json"), "utf8"));
-  assert.equal(contract.contract_version, "1.2");
+  assert.equal(contract.contract_version, "1.3");
+  assert.equal(contract.run_cmd, "node dist-cli/cli/run.js");
   assert.equal(contract.headless_cmd, "node dist-cli/cli/headless.js");
+  assert.equal(contract.bench_cmd, "node dist-cli/cli/bench.js");
+  assert.equal(contract.soak_cmd, "node dist-cli/cli/soak.js");
   assert.equal(contract.tuning.lantern_count_night1, 5);
   assert.equal(contract.tuning.fall_enabled, true);
   assert.equal(contract.tuning.dash_speed, 14);

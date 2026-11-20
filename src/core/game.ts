@@ -1817,3 +1817,115 @@ export function runHeadlessSimulation(options: {
   output.push(toEndLine(world));
   return output;
 }
+
+/**
+ * Initializes the Contract v1.3 standardized Night 1 benchmark world:
+ * - Mây stationary at (0, 0, 0)
+ * - L1..L3 lit at fuel 100, L4..L5 unlit
+ * - 200 wander Shades and 100 fireflies distributed uniformly on the island
+ * - Spawners, damage, pickups, fuel decay, and night termination disabled
+ */
+export function createBenchWorld(seed: number): GameWorld {
+  const world = createGameWorld({
+    seed,
+    night: 1,
+    scenario: {
+      player: { pos: [0, 0, 0], carried: 0, flames: 3 },
+      random_motes: false,
+      random_shades: false,
+      random_drifters: false,
+      wind_enabled: false,
+      lanterns: [
+        { id: "L1", lit: true, fuel: 100 },
+        { id: "L2", lit: true, fuel: 100 },
+        { id: "L3", lit: true, fuel: 100 },
+        { id: "L4", lit: false },
+        { id: "L5", lit: false },
+      ],
+    },
+  });
+
+  // 100 fireflies uniformly distributed across Night 1 island (radius <= 37m)
+  for (let i = 1; i <= 100; i++) {
+    const angle = world.rng() * Math.PI * 2;
+    const radius = Math.sqrt(world.rng()) * 37;
+    const x = Math.cos(angle) * radius;
+    const z = Math.sin(angle) * radius;
+    const gy = getGroundY(1, x, z) ?? 0;
+    world.motes.push({
+      id: `BM${i}`,
+      pos: [x, gy, z],
+      kind: "random",
+      ttlTicks: null,
+      bornTick: -1,
+    });
+  }
+
+  // 200 wander Shades distributed across Night 1 island outside safe zones
+  const safeR = world.tuning.safe_radius;
+  for (let i = 1; i <= 200; i++) {
+    let sx = 0;
+    let sz = 0;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const angle = world.rng() * Math.PI * 2;
+      const radius = Math.sqrt(world.rng()) * 37.5;
+      const cx = Math.cos(angle) * radius;
+      const cz = Math.sin(angle) * radius;
+      const outsideSafe = world.lanterns.every(
+        (l) => !isLanternSafe(l, world.tuning) || Math.hypot(cx - l.pos[0], cz - l.pos[2]) >= safeR
+      );
+      sx = cx;
+      sz = cz;
+      if (outsideSafe) break;
+    }
+    const gy = getGroundY(1, sx, sz) ?? 0;
+    world.shades.push({
+      id: `BS${i}`,
+      pos: [sx, gy + SHADE_DEFAULT_Y, sz],
+      state: "wander",
+      stateTicksLeft: 0,
+      pushTicksLeft: 0,
+      pushDir: [1, 0],
+      recoilDir: [1, 0],
+      evadeTicksLeft: 0,
+      wanderAngle: world.rng() * Math.PI * 2,
+      bornTick: -1,
+      targetLanternId: null,
+      drainTicks: 0,
+    });
+  }
+
+  return world;
+}
+
+/**
+ * Advances one 60 Hz benchmark tick: only wander Shade locomotion + safe-radius clamping runs.
+ */
+export function stepBenchWorld(world: GameWorld): void {
+  world.tick += 1;
+  world.simTick += 1;
+
+  for (const shade of world.shades) {
+    const unlitTarget = findNearestReachableLantern(world, shade, (l) => !l.lit);
+    let dx = 0;
+    let dz = 0;
+    if (unlitTarget && distXZ(shade.pos, unlitTarget.pos) > SHADE_DRAIN_RADIUS) {
+      const [tx, tz] = chooseNavTarget(world, shade, unlitTarget.pos);
+      [dx, dz] = stepToward(shade.pos, tx, tz, SHADE_WANDER_SPEED);
+    } else {
+      shade.wanderAngle += 0.6 * DT_SEC;
+      dx = Math.cos(shade.wanderAngle) * SHADE_WANDER_SPEED * DT_SEC;
+      dz = Math.sin(shade.wanderAngle) * SHADE_WANDER_SPEED * DT_SEC;
+    }
+
+    const floorPos = shadeFloorPos(shade.pos);
+    const moved = moveHorizontalOnTerrain(world.night, floorPos, dx, dz, 0.45, false);
+    if (moved.blocked) {
+      shade.wanderAngle += Math.PI * 0.75;
+    }
+    const gy = getGroundY(world.night, moved.x, moved.z);
+    shade.pos = [moved.x, (gy ?? 0) + SHADE_DEFAULT_Y, moved.z];
+  }
+
+  stepSafeZones(world, true);
+}
