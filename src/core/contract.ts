@@ -7,7 +7,7 @@ export const TICKS_PER_SEC = 60;
 /** Floating-point epsilon for geometry / boundary tolerances. */
 export const TIMER_EPS = 1e-9;
 
-/** Standard physics & Ticket-02 tick durations. */
+/** Standard physics & Ticket-02/03 tick durations. */
 export const JUMP_VELOCITY_MPS = 7.0;
 export const GRAVITY_MPS2 = 20.0;
 export const DASH_TICKS = 12;
@@ -33,6 +33,9 @@ export const SHADE_STUN_TICKS = 120;
 export const SHADE_STUN_PUSH_TICKS = 15;
 export const SHADE_EVADE_TICKS = 30;
 export const SHADE_DETECT_RADIUS = 12;
+export const SHADE_DRAIN_DETECT_RADIUS = 6;
+export const SHADE_DRAIN_RADIUS = 2.0;
+export const SHADE_FUEL_DRAIN_EVENT_INTERVAL = 60;
 export const SHADE_LOSE_RADIUS = 18;
 export const SHADE_WANDER_SPEED = 2.0;
 export const SHADE_DEFAULT_Y = 0.8;
@@ -53,7 +56,7 @@ export const WIND_WARN_TICKS = 120;
 export const WIND_ACTIVE_TICKS = 300;
 export const WIND_SPEED_MPS = 2.0;
 
-/** Default Contract v1.1 tuning matching `game.contract.json`. */
+/** Default Contract v1.2 tuning matching `game.contract.json`. */
 export const DEFAULT_TUNING: TuningConfig = {
   player_speed: 6,
   dash_speed: 14,
@@ -66,9 +69,9 @@ export const DEFAULT_TUNING: TuningConfig = {
   interact_radius: 2,
   pulse_cost: 3,
   pulse_radius: 5,
-  night1_duration_s: 300,
-  night2_duration_s: 330,
-  night3_duration_s: 360,
+  night1_duration_s: 240,
+  night2_duration_s: 270,
+  night3_duration_s: 300,
   flames: 3,
   invuln_s: 1.5,
   hit_drop_ratio: 0.5,
@@ -79,14 +82,39 @@ export const DEFAULT_TUNING: TuningConfig = {
   shade_speed: 4,
   shade_hit_radius: 1,
   fall_enabled: true,
+  fuel_max: 100,
+  fuel_decay_per_s: 1,
+  fuel_per_mote: 10,
+  relight_cost: 5,
+  win_ratio: 0.6,
+  drain_per_s: 5,
+  low_fuel_threshold: 30,
+  capacity_max: 20,
   score: {
-    per_mote: 10,
+    per_mote: 5,
     per_lantern: 100,
+    per_relight: 40,
     per_stun: 5,
-    per_second_left: 2,
+    per_stun_drain: 15,
+    per_lantern_dawn: 50,
     per_flame_left: 50,
   },
 };
+
+/** Rounds to 1 decimal place without `-0` (used for snapshot `fuel`). */
+export function round1(val: number): number {
+  const r = Math.round(val * 10) / 10;
+  return Object.is(r, -0) ? 0 : r;
+}
+
+/** Dynamic carrying capacity (`10 + 2 * successfulLights`, capped at `capacityMax`). */
+export function getDynamicCapacity(
+  baseCapacity: number,
+  successfulLights: number,
+  capacityMax: number
+): number {
+  return Math.min(capacityMax, baseCapacity + 2 * successfulLights);
+}
 
 /** Returns the 5 standardized Night 1 Great Lanterns (`L1..L5`). */
 export function createDefaultLanterns(): LanternEntity[] {
@@ -99,8 +127,11 @@ export function createDefaultLanterns(): LanternEntity[] {
   ];
   return coords.map((pos, idx) => ({
     id: `L${idx + 1}`,
-    pos,
+    pos: [pos[0], pos[1], pos[2]],
     lit: false,
     deposited: 0,
+    fuelSixtieths: 0,
+    everLit: false,
+    relitCount: 0,
   }));
 }

@@ -64,6 +64,9 @@ function buildLanternList(coords: Vec3Tuple[]): LanternEntity[] {
     pos,
     lit: false,
     deposited: 0,
+    fuelSixtieths: 0,
+    everLit: false,
+    relitCount: 0,
   }));
 }
 
@@ -79,7 +82,7 @@ export function getNightMapConfig(night: NightNumber): NightMapConfig {
 
     return {
       night: 1,
-      durationS: 300,
+      durationS: 240,
       spawnPos: [0, 0, 0],
       lanterns: createDefaultLanterns(),
       motePoints,
@@ -108,7 +111,7 @@ export function getNightMapConfig(night: NightNumber): NightMapConfig {
 
     return {
       night: 2,
-      durationS: 330,
+      durationS: 270,
       spawnPos: [0, 0, 0],
       lanterns: buildLanternList([
         [0, 0, 20],
@@ -163,7 +166,7 @@ export function getNightMapConfig(night: NightNumber): NightMapConfig {
 
   return {
     night: 3,
-    durationS: 360,
+    durationS: 300,
     spawnPos: [0, 0, -20],
     lanterns: buildLanternList([
       [0, 6, 6],

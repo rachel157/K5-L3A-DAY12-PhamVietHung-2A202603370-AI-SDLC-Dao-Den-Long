@@ -1,4 +1,4 @@
-/** Supported nights in Phase 2 (`1 | 2 | 3`). */
+/** Supported nights in Phase 3 (`1 | 2 | 3`). */
 export type NightNumber = 1 | 2 | 3;
 
 /** 3D coordinate tuple `[x, y, z]` in meters (Y-up, ground at Y = 0). */
@@ -7,16 +7,18 @@ export type Vec3Tuple = [number, number, number];
 /** 2D input move vector `[x, z]` in `[-1, 1]`. */
 export type MoveTuple = [number, number];
 
-/** Scoring configuration defined in `game.contract.json`. */
+/** Scoring configuration defined in `game.contract.json` (`v1.2`). */
 export interface ScoreConfig {
   per_mote: number;
   per_lantern: number;
+  per_relight: number;
   per_stun: number;
-  per_second_left: number;
+  per_stun_drain: number;
+  per_lantern_dawn: number;
   per_flame_left: number;
 }
 
-/** Gameplay tuning configuration defined in `game.contract.json` (`v1.1`). */
+/** Gameplay tuning configuration defined in `game.contract.json` (`v1.2`). */
 export interface TuningConfig {
   player_speed: number;
   dash_speed: number;
@@ -42,6 +44,14 @@ export interface TuningConfig {
   shade_speed: number;
   shade_hit_radius: number;
   fall_enabled: boolean;
+  fuel_max: number;
+  fuel_decay_per_s: number;
+  fuel_per_mote: number;
+  relight_cost: number;
+  win_ratio: number;
+  drain_per_s: number;
+  low_fuel_threshold: number;
+  capacity_max: number;
   score: ScoreConfig;
 }
 
@@ -55,16 +65,25 @@ export interface GameContract {
   tuning: TuningConfig;
 }
 
-/** Great Lantern entity (`L1..L7`). */
+/** Great Lantern entity (`L1..L7`) with integer 1/60 fuel tracking (`v1.2`). */
 export interface LanternEntity {
   id: string;
   pos: Vec3Tuple;
   lit: boolean;
   deposited: number;
+  fuelSixtieths: number;
+  everLit: boolean;
+  relitCount: number;
 }
 
-/** Contract v1.1 required Shade states. */
-export type ShadeBehaviorState = "spawning" | "wander" | "chase" | "recoil" | "stunned";
+/** Contract v1.2 required Shade states. */
+export type ShadeBehaviorState =
+  | "spawning"
+  | "wander"
+  | "chase"
+  | "drain"
+  | "recoil"
+  | "stunned";
 
 /** Shade (Bóng Mực) entity. */
 export interface ShadeEntity {
@@ -78,6 +97,8 @@ export interface ShadeEntity {
   evadeTicksLeft: number;
   wanderAngle: number;
   bornTick: number;
+  targetLanternId: string | null;
+  drainTicks: number;
 }
 
 /** Firefly mote kind (`random` from map points, `dropped` from hit/drifter). */
@@ -123,6 +144,7 @@ export interface PlayerState {
   facing: [number, number];
   flames: number;
   carried: number;
+  successfulLights: number;
   invulnTicks: number;
   dashTicksLeft: number;
   dashCdTicks: number;
@@ -136,7 +158,7 @@ export interface PlayerState {
   savedLaunchVy: number;
 }
 
-/** Single input frame from `--inputs` JSON (`v1.1`). */
+/** Single input frame from `--inputs` JSON (`v1.2`). */
 export interface InputFrame {
   tick: number;
   move?: MoveTuple;
@@ -159,12 +181,14 @@ export interface NormalizedInput {
   pause: boolean;
 }
 
-/** Scenario override JSON structure (`v1.1`). */
+/** Scenario override JSON structure (`v1.2`). */
 export interface ScenarioLanternOverride {
   id: string;
   pos?: Vec3Tuple;
   deposited?: number;
   lit?: boolean;
+  fuel?: number;
+  ever_lit?: boolean;
 }
 
 export interface ScenarioShadeOverride {
@@ -172,6 +196,7 @@ export interface ScenarioShadeOverride {
   pos: Vec3Tuple;
   state?: ShadeBehaviorState;
   state_ticks_left?: number;
+  target_lantern_id?: string | null;
 }
 
 export interface ScenarioDrifterOverride {
@@ -199,6 +224,7 @@ export interface ScenarioConfig {
     pos?: Vec3Tuple;
     carried?: number;
     flames?: number;
+    successful_lights?: number;
     invuln_ticks?: number;
     dash_cd_ticks?: number;
     pulse_cd_ticks?: number;
@@ -217,7 +243,7 @@ export interface ScenarioConfig {
 }
 
 export type GamePlayState = "playing" | "paused" | "won" | "lost";
-export type GameOverReason = "all_lit" | "dawn" | "no_flames";
+export type GameOverReason = "dawn_survived" | "dawn" | "no_flames";
 
 export type GameEvent =
   | { type: "event"; tick: number; name: "night_start"; data: { night: NightNumber } }
@@ -237,7 +263,25 @@ export type GameEvent =
       name: "deposit";
       data: { lantern_id: string; amount: number; deposited: number };
     }
-  | { type: "event"; tick: number; name: "lantern_lit"; data: { lantern_id: string } }
+  | {
+      type: "event";
+      tick: number;
+      name: "refuel";
+      data: { lantern_id: string; amount: number; fuel: number };
+    }
+  | {
+      type: "event";
+      tick: number;
+      name: "lantern_lit";
+      data: { lantern_id: string; relight: boolean };
+    }
+  | { type: "event"; tick: number; name: "lantern_out"; data: { lantern_id: string } }
+  | {
+      type: "event";
+      tick: number;
+      name: "fuel_drain";
+      data: { lantern_id: string; shade_id: string; fuel: number };
+    }
   | { type: "event"; tick: number; name: "pulse"; data: { stunned_ids: string[] } }
   | {
       type: "event";
@@ -285,6 +329,7 @@ export interface GameSnapshot {
     grounded: boolean;
     flames: number;
     carried: number;
+    capacity: number;
     invuln: boolean;
     dash_cd_s: number;
     pulse_cd_s: number;
@@ -295,6 +340,9 @@ export interface GameSnapshot {
     pos: Vec3Tuple;
     lit: boolean;
     deposited: number;
+    fuel: number;
+    ever_lit: boolean;
+    relit_count: number;
   }>;
   shades: Array<{
     id: string;
@@ -337,7 +385,7 @@ export interface WindState {
   cycleTicks: number;
 }
 
-/** Complete mutable simulation world. */
+/** Complete mutable simulation world (`Contract v1.2`). */
 export interface GameWorld {
   seed: number;
   night: NightNumber;

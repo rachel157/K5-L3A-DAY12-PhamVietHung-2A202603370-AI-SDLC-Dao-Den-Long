@@ -6,9 +6,9 @@ import {
   moveHorizontalOnTerrain,
 } from "../dist-cli/core/maps.js";
 
-test("Night 1, 2, 3 map configs match Ticket-02 counts and coordinates", () => {
+test("Night 1, 2, 3 map configs match Ticket-02/03 counts, durations (240/270/300s) and coordinates", () => {
   const n1 = getNightMapConfig(1);
-  assert.equal(n1.durationS, 300);
+  assert.equal(n1.durationS, 240);
   assert.equal(n1.lanterns.length, 5);
   assert.deepEqual(n1.lanterns[0].pos, [0, 0, 25]);
   assert.deepEqual(n1.lanterns[1].pos, [23.8, 0, 7.7]);
@@ -18,7 +18,7 @@ test("Night 1, 2, 3 map configs match Ticket-02 counts and coordinates", () => {
   assert.equal(n1.shadeIntervalTicks, 480);
 
   const n2 = getNightMapConfig(2);
-  assert.equal(n2.durationS, 330);
+  assert.equal(n2.durationS, 270);
   assert.equal(n2.lanterns.length, 6);
   assert.deepEqual(n2.lanterns[3].pos, [70, 0, 20]);
   assert.equal(n2.motePoints.length, 24);
@@ -30,7 +30,7 @@ test("Night 1, 2, 3 map configs match Ticket-02 counts and coordinates", () => {
   assert.equal(n2.shadeIntervalTicks, 420);
 
   const n3 = getNightMapConfig(3);
-  assert.equal(n3.durationS, 360);
+  assert.equal(n3.durationS, 300);
   assert.equal(n3.lanterns.length, 7);
   assert.deepEqual(n3.lanterns[0].pos, [0, 6, 6]);
   assert.equal(n3.motePoints.length, 30);
