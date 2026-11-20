@@ -18,3 +18,19 @@ export function bindHudActionButton(
   button: HTMLElement,
   onAction: () => void
 ): void;
+
+export interface OffscreenArrowProjection {
+  visible: boolean;
+  x: number;
+  y: number;
+  angleDeg: number;
+}
+
+export function computeOffscreenLanternArrow(
+  viewPos: Vec3Tuple,
+  fovRad: number,
+  aspect: number,
+  width: number,
+  height: number,
+  margin?: number
+): OffscreenArrowProjection;
