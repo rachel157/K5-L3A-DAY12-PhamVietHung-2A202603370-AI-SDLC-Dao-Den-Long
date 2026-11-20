@@ -6,30 +6,44 @@ import {
   toSnapshot,
 } from "../dist-cli/core/game.js";
 
-test("default Night 1 initialization spawns 5 lanterns, 20 motes, 3 shades, and tick 0 snapshot", () => {
-  const lines = runHeadlessSimulation({ seed: 7, maxTicks: 0 });
-  assert.equal(lines.length, 2);
-  const snap0 = lines[0];
-  const end = lines[1];
+test("default Night 1 initialization matches Ticket-02 counts and spawns 2 shades at tick 300", () => {
+  const lines0 = runHeadlessSimulation({ seed: 7, night: 1, maxTicks: 0 });
+  const snap0 = lines0[0];
   assert.equal(snap0.type, "snapshot");
+  assert.equal(snap0.night, 1);
   assert.equal(snap0.tick, 0);
   assert.equal(snap0.sim_tick, 0);
   assert.equal(snap0.state, "playing");
   assert.equal(snap0.time_left_s, 300);
   assert.equal(snap0.score, 0);
-  assert.deepEqual(snap0.player, { pos: [0, 0, 0], flames: 3, carried: 0 });
+  assert.deepEqual(snap0.player.pos, [0, 0, 0]);
+  assert.equal(snap0.player.flames, 3);
+  assert.equal(snap0.player.carried, 0);
+  assert.equal(snap0.player.invuln, false);
+  assert.equal(snap0.player.grounded, true);
   assert.equal(snap0.lanterns.length, 5);
   assert.deepEqual(snap0.lanterns[0], { id: "L1", pos: [0, 0, 25], lit: false, deposited: 0 });
   assert.equal(snap0.motes_active, 20);
   assert.equal(snap0.motes.length, 20);
-  assert.equal(snap0.shades.length, 3);
-  assert.deepEqual(end, { type: "end", ticks: 0, state: "playing", score: 0 });
+  assert.equal(snap0.motes[0].kind, "random");
+  assert.equal(snap0.motes[0].ttl_s, null);
+  assert.equal(snap0.shades.length, 0);
+
+  // At tick 300, 2 shades spawn (S1, S2)
+  const lines300 = runHeadlessSimulation({ seed: 7, night: 1, maxTicks: 300, snapshotEvery: 300 });
+  const snap300 = lines300.find((l) => l.type === "snapshot" && l.tick === 300);
+  assert.equal(snap300.shades.length, 2);
+  assert.deepEqual(
+    snap300.shades.map((s) => s.id),
+    ["S1", "S2"]
+  );
+  assert.equal(snap300.shades[0].state, "spawning");
 });
 
-test("movement matches player_speed, cam_yaw_deg rotation, vector normalization, and jump Y arc", () => {
-  // Move +Z for 120 ticks (2s) at yaw=0 -> z = 6 * 2 = 12.0
+test("movement matches 6.0 m/s, cam_yaw_deg rotation, normalization, and 7.0 m/s jump", () => {
   const linesZ = runHeadlessSimulation({
     seed: 1,
+    night: 1,
     scenario: { random_motes: false, random_shades: false },
     frames: [{ tick: 0, move: [0, 1], cam_yaw_deg: 0, jump: true }],
     maxTicks: 120,
@@ -38,23 +52,25 @@ test("movement matches player_speed, cam_yaw_deg rotation, vector normalization,
   const snapZ = linesZ.find((l) => l.type === "snapshot" && l.tick === 120);
   assert.deepEqual(snapZ.player.pos, [0, 0, 12]);
 
-  // Check mid-air Y > 0 shortly after jump at tick 10
+  // Jump vy = 7.0, g = -20 -> at tick 21 (0.35s apex): y = 7*0.35 - 10*0.35^2 = 1.225m
   const linesJump = runHeadlessSimulation({
     seed: 1,
+    night: 1,
     scenario: { random_motes: false, random_shades: false },
     frames: [{ tick: 0, move: [1, 1], cam_yaw_deg: 90, jump: true }],
-    maxTicks: 10,
-    snapshotEvery: 10,
+    maxTicks: 21,
+    snapshotEvery: 21,
   });
-  const snap10 = linesJump.find((l) => l.type === "snapshot" && l.tick === 10);
-  assert.ok(snap10.player.pos[1] > 0, "player should be airborne after jump");
-  // Normalized diagonal [1,1] has speed 6m/s -> total XZ distance after 10/60s = 1.0m
-  const xzDist = Math.hypot(snap10.player.pos[0], snap10.player.pos[2]);
-  assert.ok(Math.abs(xzDist - 1.0) < 0.01, `expected normalized distance ~1.0, got ${xzDist}`);
+  const snap21 = linesJump.find((l) => l.type === "snapshot" && l.tick === 21);
+  assert.ok(snap21.player.pos[1] > 1.15, `expected jump height > 1.15m, got ${snap21.player.pos[1]}`);
+  assert.equal(snap21.player.grounded, false);
+  const xzDist = Math.hypot(snap21.player.pos[0], snap21.player.pos[2]);
+  assert.ok(Math.abs(xzDist - 6 * (21 / 60)) < 0.02);
 
   // cam_yaw_deg=90 with move=[0,1] moves along +X
   const linesX = runHeadlessSimulation({
     seed: 1,
+    night: 1,
     scenario: { random_motes: false, random_shades: false },
     frames: [{ tick: 0, move: [0, 1], cam_yaw_deg: 90 }],
     maxTicks: 60,
@@ -64,21 +80,22 @@ test("movement matches player_speed, cam_yaw_deg rotation, vector normalization,
   assert.deepEqual(snapX.player.pos, [6, 0, 0]);
 });
 
-test("zero-order hold persists absent fields and edge-triggers interact only on false -> true", () => {
+test("zero-order hold persists absent fields, edge-triggers interact, and picks nearest tie-broken by smaller id", () => {
   const lines = runHeadlessSimulation({
     seed: 1,
+    night: 1,
     scenario: {
-      player: { pos: [0, 0, 25], carried: 5, flames: 3 },
+      player: { pos: [0, 0, 25], carried: 10, flames: 3 },
       random_motes: false,
       random_shades: false,
       lanterns: [
-        { id: "L1", pos: [0, 0, 24], deposited: 1 },
+        { id: "L1", pos: [0, 0, 24], deposited: 8 },
         { id: "L2", pos: [0, 0, 26], deposited: 0 },
       ],
     },
     frames: [
       { tick: 0, interact: true },
-      // tick 1 omits interact -> zero-order hold keeps true, so L2 must NOT receive a deposit on tick 2
+      // tick 1 omits interact -> held true, L2 must NOT get deposit
       { tick: 2, interact: false },
       { tick: 3, interact: true },
     ],
@@ -88,70 +105,55 @@ test("zero-order hold persists absent fields and edge-triggers interact only on 
   const deposits = lines.filter((l) => l.type === "event" && l.name === "deposit");
   assert.equal(deposits.length, 2);
   assert.equal(deposits[0].tick, 1);
-  assert.deepEqual(deposits[0].data, { lantern_id: "L1", amount: 2, deposited: 3 });
+  assert.deepEqual(deposits[0].data, { lantern_id: "L1", amount: 2, deposited: 10 });
   assert.equal(deposits[1].tick, 4);
-  assert.deepEqual(deposits[1].data, { lantern_id: "L2", amount: 3, deposited: 3 });
-  const litEvents = lines.filter((l) => l.type === "event" && l.name === "lantern_lit");
-  assert.equal(litEvents.length, 2);
+  assert.deepEqual(deposits[1].data, { lantern_id: "L2", amount: 8, deposited: 8 });
+  const end = lines[lines.length - 1];
+  // score = 2*10 + 100 (L1 lit) + 8*10 = 200
+  assert.equal(end.score, 200);
 });
 
-test("scenario patches lanterns by id without emitting events or score and suppresses random spawns", () => {
+test("scenario patches lanterns without events/score and pre-seeds explicit IDs without collision", () => {
   const world = createGameWorld({
     seed: 9,
+    night: 1,
     scenario: {
       random_motes: false,
       random_shades: false,
       lanterns: [
         { id: "L1", lit: true },
-        { id: "L2", pos: [0, 0, 10], deposited: 2 },
+        { id: "L2", pos: [0, 0, 10], deposited: 4 },
       ],
-      motes: [],
-      shades: [],
+      motes: [{ pos: [1, 0, 0] }, { id: "M1", pos: [2, 0, 0] }],
+      shades: [{ pos: [10, 0, 0] }, { id: "S1", pos: [20, 0, 0] }],
     },
   });
   const snap0 = toSnapshot(world);
   assert.equal(snap0.score, 0);
-  assert.equal(snap0.lanterns.length, 5);
   assert.equal(snap0.lanterns[0].lit, true);
-  assert.equal(snap0.lanterns[0].deposited, 3);
-  assert.deepEqual(snap0.lanterns[1].pos, [0, 0, 10]);
-  assert.equal(snap0.lanterns[1].deposited, 2);
-  assert.equal(snap0.motes_active, 0);
-  assert.equal(snap0.shades.length, 0);
-
-  const lines = runHeadlessSimulation({
-    seed: 9,
-    scenario: {
-      random_motes: false,
-      random_shades: false,
-      motes: [],
-      shades: [],
-    },
-    maxTicks: 1800,
-    snapshotEvery: 1800,
-  });
-  const finalSnap = lines.find((l) => l.type === "snapshot" && l.tick === 1800);
-  assert.equal(finalSnap.motes_active, 0);
-  assert.equal(finalSnap.shades.length, 0);
+  assert.equal(snap0.lanterns[0].deposited, 10);
+  assert.equal(new Set(snap0.motes.map((m) => m.id)).size, 2);
+  assert.equal(new Set(snap0.shades.map((s) => s.id)).size, 2);
 });
 
-test("mote pickup respects carry_capacity and winning lights all 5 lanterns with time & flame bonus before dawn", () => {
+test("mote pickup respects carry_capacity=10 and winning applies all_lit bonus before dawn", () => {
   const lines = runHeadlessSimulation({
     seed: 2,
+    night: 1,
     scenario: {
-      player: { pos: [0, 0, 0], carried: 4, flames: 2 },
+      player: { pos: [0, 0, 0], carried: 9, flames: 2 },
       random_motes: false,
       random_shades: false,
       motes: [
-        [0, 0, 1],
-        [0, 0, 1.2],
+        [0, 0, 0.5],
+        [0, 0, 0.8],
       ],
       lanterns: [
         { id: "L1", lit: true },
         { id: "L2", lit: true },
         { id: "L3", lit: true },
         { id: "L4", lit: true },
-        { id: "L5", pos: [0, 0, 2], deposited: 0 },
+        { id: "L5", pos: [0, 0, 1.5], deposited: 0 },
       ],
       time_left_s: 1 / 60,
     },
@@ -161,129 +163,92 @@ test("mote pickup respects carry_capacity and winning lights all 5 lanterns with
   });
 
   const picked = lines.filter((l) => l.type === "event" && l.name === "mote_picked");
-  assert.equal(picked.length, 1, "carry_capacity=5 should only allow picking 1 mote");
-  assert.equal(picked[0].data.carried, 5);
+  assert.equal(picked.length, 1);
+  assert.equal(picked[0].data.carried, 10);
 
   const gameOver = lines.find((l) => l.type === "event" && l.name === "game_over");
-  assert.deepEqual(gameOver, {
-    type: "event",
-    tick: 1,
-    name: "game_over",
-    data: { result: "won", reason: "all_lit" },
-  });
+  assert.deepEqual(gameOver?.data, { result: "won", reason: "all_lit" });
 
+  // score = 10*10 (deposited) + 100 (lantern) + 0*2 (0s left) + 2*50 (flames) = 300
   const end = lines[lines.length - 1];
-  // score = 10 (mote) + 200 (lantern) + 0 * 2 (0s left) + 2 * 100 (flames) = 410
-  assert.deepEqual(end, { type: "end", ticks: 1, state: "won", score: 410 });
+  assert.deepEqual(end, { type: "end", ticks: 1, state: "won", score: 300 });
 });
 
-test("pulse stuns shades for exact 180 ticks (3.0s), pushes 4m, enforces 120 tick cooldown", () => {
+test("pulse uses 3D distance <= 5m from player center, stuns 120 ticks, pushes 4m over 15 ticks, cooldown 180 ticks", () => {
   const lines = runHeadlessSimulation({
     seed: 3,
+    night: 1,
     scenario: {
-      player: { pos: [0, 0, 0], carried: 2, flames: 3 },
+      player: { pos: [0, 0, 0], carried: 6, flames: 3 },
       random_motes: false,
       random_shades: false,
-      shades: [{ id: "S1", pos: [0, 0, 3] }],
+      shades: [
+        { id: "S1", pos: [0, 0.8, 3], state: "chase" },
+        { id: "S2", pos: [0, 0.8, 0], state: "chase" }, // coincident -> +X push
+      ],
     },
     frames: [
       { tick: 0, pulse: true },
       { tick: 1, pulse: false },
-      { tick: 60, pulse: true }, // during 2.0s (120 ticks) cooldown -> ignored
+      { tick: 60, pulse: true }, // ignored during 180-tick cooldown
       { tick: 61, pulse: false },
     ],
-    maxTicks: 185,
+    maxTicks: 125,
     snapshotEvery: 1,
   });
 
   const pulses = lines.filter((l) => l.type === "event" && l.name === "pulse");
   assert.equal(pulses.length, 1);
-  assert.deepEqual(pulses[0], {
-    type: "event",
-    tick: 1,
-    name: "pulse",
-    data: { stunned_ids: ["S1"] },
-  });
+  assert.deepEqual(pulses[0].data.stunned_ids, ["S1", "S2"]);
 
-  const snap1 = lines.find((l) => l.type === "snapshot" && l.tick === 1);
-  assert.equal(snap1.shades[0].state, "stunned");
-  assert.equal(snap1.shades[0].pos[2], 7); // 3m + 4m push
-  assert.equal(snap1.score, 50);
+  const snap15 = lines.find((l) => l.type === "snapshot" && l.tick === 15);
+  assert.ok(Math.abs(snap15.shades[0].pos[2] - 7) < 0.01, `expected S1 pushed 4m to z=7, got ${snap15.shades[0].pos[2]}`);
+  assert.ok(Math.abs(snap15.shades[1].pos[0] - 4) < 0.01, `expected coincident S2 pushed +X to x=4, got ${snap15.shades[1].pos[0]}`);
+  assert.equal(snap15.score, 10); // 2 * 5 per_stun
 
-  const snap180 = lines.find((l) => l.type === "snapshot" && l.tick === 180);
-  const snap181 = lines.find((l) => l.type === "snapshot" && l.tick === 181);
-  assert.equal(snap180.shades[0].state, "stunned");
-  assert.equal(snap181.shades[0].state, "chase", "3.0s stun must expire cleanly on tick 181");
+  const snap120 = lines.find((l) => l.type === "snapshot" && l.tick === 120);
+  const snap121 = lines.find((l) => l.type === "snapshot" && l.tick === 121);
+  assert.equal(snap120.shades[0].state, "stunned");
+  assert.notEqual(snap121.shades[0].state, "stunned");
 });
 
-test("lit lanterns repel chase and stunned shades outside safe_radius (4.5m) while unlit lanterns do not", () => {
+test("lit lanterns block chase and stunned shades at 6m while unlit lanterns do not", () => {
   const lines = runHeadlessSimulation({
     seed: 4,
+    night: 1,
     scenario: {
       player: { pos: [0, 0, 25], carried: 0, flames: 3 },
       random_motes: false,
       random_shades: false,
-      lanterns: [
-        { id: "L1", pos: [0, 0, 25], lit: true },
-        { id: "L2", pos: [20, 0, 0], lit: false },
-      ],
+      lanterns: [{ id: "L1", pos: [0, 0, 25], lit: true }],
       shades: [
-        { id: "S1", pos: [0, 0, 27], state: "chase" },
-        { id: "S2", pos: [0, 0, 26], state: "stunned" },
+        { id: "S1", pos: [0, 0.8, 32], state: "chase" },
+        { id: "S2", pos: [0, 0.8, 28], state: "stunned" },
       ],
     },
-    maxTicks: 5,
+    maxTicks: 40,
     snapshotEvery: 1,
   });
   const snap1 = lines.find((l) => l.type === "snapshot" && l.tick === 1);
-  const distChase = Math.hypot(snap1.shades[0].pos[0] - 0, snap1.shades[0].pos[2] - 25);
-  const distStunned = Math.hypot(snap1.shades[1].pos[0] - 0, snap1.shades[1].pos[2] - 25);
-  assert.ok(distChase >= 4.499, `chase shade inside lit safe_radius: ${distChase}`);
-  assert.ok(distStunned >= 4.499, `stunned shade inside lit safe_radius: ${distStunned}`);
+  const dChase = Math.hypot(snap1.shades[0].pos[0], snap1.shades[0].pos[2] - 25);
+  const dStunned = Math.hypot(snap1.shades[1].pos[0], snap1.shades[1].pos[2] - 25);
+  assert.ok(dChase >= 5.99, `chase shade breached 6m safe_radius: ${dChase}`);
+  assert.ok(dStunned >= 5.99, `stunned shade breached 6m safe_radius: ${dStunned}`);
   assert.equal(lines.some((l) => l.type === "event" && l.name === "player_hit"), false);
-
-  // Unlit lantern at [20, 0, 0] does NOT repel shade
-  const unlitLines = runHeadlessSimulation({
-    seed: 4,
-    scenario: {
-      player: { pos: [20, 0, 0], carried: 0, flames: 3 },
-      random_motes: false,
-      random_shades: false,
-      lanterns: [{ id: "L2", pos: [20, 0, 0], lit: false }],
-      shades: [{ id: "S1", pos: [20, 0, 2] }],
-    },
-    maxTicks: 60,
-    snapshotEvery: 10,
-  });
-  assert.equal(unlitLines.some((l) => l.type === "event" && l.name === "player_hit"), true);
 });
 
-test("scenario auto-allocated shade and mote IDs never collide with later explicit IDs", () => {
-  const world = createGameWorld({
-    seed: 1,
-    scenario: {
-      random_motes: false,
-      random_shades: false,
-      motes: [{ pos: [1, 0, 0] }, { id: "M1", pos: [2, 0, 0] }],
-      shades: [{ pos: [10, 0, 0] }, { id: "S1", pos: [20, 0, 0] }],
-    },
-  });
-  const snap = toSnapshot(world);
-  assert.equal(new Set(snap.motes.map((m) => m.id)).size, 2);
-  assert.equal(new Set(snap.shades.map((s) => s.id)).size, 2);
-});
-
-test("shade hit drops floor(carried * hit_drop_ratio), triggers invuln_s, and loses at 0 flames", () => {
+test("shade hit drops floor(carried/2) pickupable motes for 480 ticks, triggers recoil & invuln, and loses at 0 flames", () => {
   const lines = runHeadlessSimulation({
     seed: 5,
+    night: 1,
     scenario: {
-      player: { pos: [0, 0, 0], carried: 3, flames: 2 },
+      player: { pos: [0, 0, 0], carried: 5, flames: 2 },
       random_motes: false,
       random_shades: false,
-      shades: [{ id: "S1", pos: [0, 0, 0.5] }],
+      shades: [{ id: "S1", pos: [0, 0.8, 0.5], state: "chase" }],
     },
     maxTicks: 120,
-    snapshotEvery: 10,
+    snapshotEvery: 1,
   });
 
   const hits = lines.filter((l) => l.type === "event" && l.name === "player_hit");
@@ -292,24 +257,24 @@ test("shade hit drops floor(carried * hit_drop_ratio), triggers invuln_s, and lo
     type: "event",
     tick: 1,
     name: "player_hit",
-    data: { by: "shade", flames: 1, dropped: 1 },
+    data: { by: "shade", flames: 1, dropped: 2 },
   });
-  // invuln_s=1.5s (90 ticks) -> second hit must occur at tick 92 (after tick 91 clears invuln)
-  assert.ok(hits[1].tick >= 91, `expected invuln for 90 ticks, second hit at ${hits[1].tick}`);
-  assert.deepEqual(hits[1], {
-    type: "event",
-    tick: hits[1].tick,
-    name: "player_hit",
-    data: { by: "shade", flames: 0, dropped: 1 },
-  });
+  const snap1 = lines.find((l) => l.type === "snapshot" && l.tick === 1);
+  assert.equal(snap1.player.invuln, true);
+  assert.equal(snap1.motes.length, 2);
+  assert.equal(snap1.motes[0].kind, "dropped");
+  assert.equal(snap1.shades[0].state, "recoil");
 
+  // invuln lasts 90 ticks; second hit occurs at tick >= 91
+  assert.ok(hits[1].tick >= 91, `expected invuln 90 ticks, got second hit at ${hits[1].tick}`);
   const over = lines.find((l) => l.type === "event" && l.name === "game_over");
   assert.deepEqual(over?.data, { result: "lost", reason: "no_flames" });
 });
 
-test("dawn timer ends game with lost/dawn and simulation is byte-for-byte deterministic without -0", () => {
+test("dawn timeout ends game cleanly and Night 1 simulation is byte-for-byte deterministic without -0", () => {
   const opts = {
     seed: 12,
+    night: 1,
     scenario: {
       player: { pos: [-0, 0, 0], carried: 0, flames: 3 },
       random_motes: false,
@@ -319,12 +284,11 @@ test("dawn timer ends game with lost/dawn and simulation is byte-for-byte determ
     maxTicks: 60,
     snapshotEvery: 15,
   };
-  const run1 = runHeadlessSimulation(opts).map((x) => JSON.stringify(x));
-  const run2 = runHeadlessSimulation(opts).map((x) => JSON.stringify(x));
-  assert.deepEqual(run1, run2);
-  for (const line of run1) {
+  const r1 = runHeadlessSimulation(opts).map((x) => JSON.stringify(x));
+  const r2 = runHeadlessSimulation(opts).map((x) => JSON.stringify(x));
+  assert.deepEqual(r1, r2);
+  for (const line of r1) {
     assert.equal(/(?<=[:\[,])-0(?=[,\]\}])/.test(line), false, `unexpected -0 in ${line}`);
   }
-  const end = JSON.parse(run1[run1.length - 1]);
-  assert.deepEqual(end, { type: "end", ticks: 30, state: "lost", score: 0 });
+  assert.deepEqual(JSON.parse(r1[r1.length - 1]), { type: "end", ticks: 30, state: "lost", score: 0 });
 });

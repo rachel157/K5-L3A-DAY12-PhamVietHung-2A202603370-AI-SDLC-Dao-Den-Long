@@ -133,6 +133,7 @@ export interface PlayerState {
   fallTriggered: boolean;
   isLaunched: boolean;
   launchVel: [number, number];
+  savedLaunchVy: number;
 }
 
 /** Single input frame from `--inputs` JSON (`v1.1`). */
