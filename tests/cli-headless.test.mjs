@@ -67,7 +67,8 @@ test("headless CLI runs scenario + inputs to deterministic won JSONL", () => {
         { id: "L4", lit: true },
         { id: "L5", pos: [0, 0, 12], deposited: 0 },
       ],
-      time_left_s: 300,
+      // [THAY THẾ v1.2] Lighting all 5 no longer triggers early win; dawn at 2.5s (150t) wins via dawn_survived.
+      time_left_s: 2.5,
     })
   );
 
@@ -125,10 +126,12 @@ test("headless CLI runs scenario + inputs to deterministic won JSONL", () => {
     assert.ok(eventNames.includes("deposit"));
     assert.ok(eventNames.includes("lantern_lit"));
     assert.ok(eventNames.includes("game_over"));
+    const gameOver = records.find((r) => r.type === "event" && r.name === "game_over");
+    assert.deepEqual(gameOver.data, { result: "won", reason: "dawn_survived" });
     const end = records[records.length - 1];
     assert.equal(end.type, "end");
     assert.equal(end.state, "won");
-    assert.ok(end.ticks < 300);
+    assert.equal(end.ticks, 150);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -359,6 +362,103 @@ test("headless CLI supports Nights 2 and 3 deterministically and parses Contract
         .status,
       2
     );
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("headless CLI parses Contract v1.2 fuel/drain/ever_lit/successful_lights fields and validates schema errors", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cli-v12-"));
+  const v12ScenPath = path.join(tmpDir, "v12-scen.json");
+  const v12InputsPath = path.join(tmpDir, "v12-inputs.json");
+  const v12Out = path.join(tmpDir, "v12.jsonl");
+  const errOut = path.join(tmpDir, "err.jsonl");
+
+  fs.writeFileSync(
+    v12ScenPath,
+    JSON.stringify({
+      player: { pos: [0, 0, 31.5], carried: 12, flames: 3, successful_lights: 2 },
+      random_motes: false,
+      random_shades: false,
+      lanterns: [
+        { id: "L1", pos: [0, 0, 25], lit: true, fuel: 15, ever_lit: true },
+        { id: "L2", pos: [0, 0, 32], lit: true, fuel: 80 },
+        { id: "L3", lit: true, fuel: 80 },
+        { id: "L4", lit: false, ever_lit: true },
+      ],
+      shades: [
+        { id: "S1", pos: [0, 0.8, 24], state: "drain", target_lantern_id: "L1" },
+      ],
+      time_left_s: 3.5,
+    })
+  );
+
+  // Refuel L2 at tick 0 (dist 0.5m, fuel 80 -> +2=100), S1 emits fuel_drain on L1 at 60t & L1 dies at 150t, then move to L1 to relight at 195t -> dawn_survived at 210t
+  fs.writeFileSync(
+    v12InputsPath,
+    JSON.stringify({
+      frames: [
+        { tick: 0, interact: true },
+        { tick: 1, interact: false },
+        { tick: 140, move: [0, -1] }, // 50 ticks -> moves -5Z from 31.5 to 26.5 (within 1.5m of L1)
+        { tick: 190, move: [0, 0], interact: true },
+        { tick: 191, interact: false },
+      ],
+    })
+  );
+
+  try {
+    const r = runCli([
+      "--seed",
+      "11",
+      "--night",
+      "1",
+      "--scenario",
+      v12ScenPath,
+      "--inputs",
+      v12InputsPath,
+      "--ticks",
+      "220",
+      "--snapshot-every",
+      "1",
+      "--out",
+      v12Out,
+    ]);
+    assert.equal(r.status, 0, r.stderr);
+    const records = readJsonl(v12Out);
+    const snap0 = records.find((x) => x.type === "snapshot" && x.tick === 0);
+    assert.equal(snap0.player.capacity, 14);
+    assert.equal(snap0.lanterns[0].fuel, 15);
+    assert.equal(snap0.lanterns[0].ever_lit, true);
+    assert.equal(snap0.lanterns[3].ever_lit, true);
+    assert.equal(snap0.shades[0].state, "drain");
+
+    const eventNames = records.filter((x) => x.type === "event").map((x) => x.name);
+    assert.ok(eventNames.includes("refuel"));
+    assert.ok(eventNames.includes("fuel_drain"));
+    assert.ok(eventNames.includes("lantern_out"));
+    assert.ok(eventNames.includes("lantern_lit"));
+    assert.ok(eventNames.includes("game_over"));
+    const relitEvent = records.find((x) => x.type === "event" && x.name === "lantern_lit");
+    assert.equal(relitEvent.data.relight, true);
+    const dawnOver = records.find((x) => x.type === "event" && x.name === "game_over");
+    assert.deepEqual(dawnOver.data, { result: "won", reason: "dawn_survived" });
+
+    // Invalid v1.2 scenario fields must exit 2
+    const invalidScenarios = [
+      { shades: [{ pos: [0, 0.8, 0], state: "drain", target_lantern_id: "L6" }] }, // L6 invalid on Night 1
+      { shades: [{ pos: [0, 0.8, 0], state: "drain", target_lantern_id: 42 }] },
+      { lanterns: [{ id: "L1", lit: true, fuel: -1 }] },
+      { lanterns: [{ id: "L1", lit: true, fuel: 101 }] },
+      { lanterns: [{ id: "L1", ever_lit: "yes" }] },
+      { player: { successful_lights: -1 } },
+    ];
+    for (let i = 0; i < invalidScenarios.length; i++) {
+      const p = path.join(tmpDir, `bad-${i}.json`);
+      fs.writeFileSync(p, JSON.stringify(invalidScenarios[i]));
+      const res = runCli(["--seed", "1", "--night", "1", "--scenario", p, "--ticks", "5", "--out", errOut]);
+      assert.equal(res.status, 2, `invalidScenarios[${i}] should exit 2, got ${res.status}`);
+    }
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

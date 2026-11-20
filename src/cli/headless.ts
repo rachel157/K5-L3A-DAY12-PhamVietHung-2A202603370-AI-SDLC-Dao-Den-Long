@@ -42,6 +42,7 @@ const VALID_SHADE_STATES = new Set<ShadeBehaviorState>([
   "chase",
   "recoil",
   "stunned",
+  "drain",
 ]);
 const VALID_DRIFTER_STATES = new Set<DrifterState>(["idle", "chase", "flee", "removed"]);
 const VALID_MOTE_KINDS = new Set<MoteKind>(["random", "dropped"]);
@@ -250,6 +251,7 @@ function parseScenarioPlayer(rawPlayer: unknown): NonNullable<ScenarioConfig["pl
   for (const field of [
     "carried",
     "flames",
+    "successful_lights",
     "invuln_ticks",
     "dash_cd_ticks",
     "pulse_cd_ticks",
@@ -295,21 +297,39 @@ function parseScenarioMotes(rawMotes: unknown): ScenarioMoteInput[] {
   });
 }
 
-function parseScenarioShades(rawShades: unknown): ScenarioShadeOverride[] {
+function parseScenarioShades(rawShades: unknown, night: NightNumber): ScenarioShadeOverride[] {
   if (!Array.isArray(rawShades)) {
     throw new ContractFileError("scenario.shades must be an array");
   }
+  const validLanternIds = validLanternIdsForNight(night);
   return rawShades.map((item, idx) => {
     if (!isPlainObject(item) || item.pos === undefined) {
-      throw new ContractFileError(`scenario.shades[${idx}] must be {pos, id?, state?, state_ticks_left?}`);
+      throw new ContractFileError(
+        `scenario.shades[${idx}] must be {pos, id?, state?, state_ticks_left?, target_lantern_id?}`
+      );
     }
     if (item.id !== undefined && typeof item.id !== "string") {
       throw new ContractFileError(`scenario.shades[${idx}].id must be a string`);
     }
     if (item.state !== undefined && !VALID_SHADE_STATES.has(item.state as ShadeBehaviorState)) {
       throw new ContractFileError(
-        `scenario.shades[${idx}].state must be spawning|wander|chase|recoil|stunned`
+        `scenario.shades[${idx}].state must be spawning|wander|chase|recoil|stunned|drain`
       );
+    }
+    let targetLanternId: string | null | undefined;
+    if (item.target_lantern_id !== undefined) {
+      if (item.target_lantern_id === null) {
+        targetLanternId = null;
+      } else if (
+        typeof item.target_lantern_id !== "string" ||
+        !validLanternIds.has(item.target_lantern_id)
+      ) {
+        throw new ContractFileError(
+          `scenario.shades[${idx}].target_lantern_id "${String(item.target_lantern_id)}" is not valid for Night ${night}`
+        );
+      } else {
+        targetLanternId = item.target_lantern_id;
+      }
     }
     return {
       id: item.id as string | undefined,
@@ -319,6 +339,7 @@ function parseScenarioShades(rawShades: unknown): ScenarioShadeOverride[] {
         item.state_ticks_left !== undefined
           ? assertNonNegInt(item.state_ticks_left, `scenario.shades[${idx}].state_ticks_left`)
           : undefined,
+      target_lantern_id: targetLanternId,
     };
   });
 }
@@ -397,6 +418,16 @@ function parseScenarioLanterns(rawLanterns: unknown, night: NightNumber): Scenar
     if (item.lit !== undefined && typeof item.lit !== "boolean") {
       throw new ContractFileError(`scenario.lanterns[${idx}].lit must be boolean`);
     }
+    if (item.ever_lit !== undefined && typeof item.ever_lit !== "boolean") {
+      throw new ContractFileError(`scenario.lanterns[${idx}].ever_lit must be boolean`);
+    }
+    let fuel: number | undefined;
+    if (item.fuel !== undefined) {
+      fuel = assertNonNegFinite(item.fuel, `scenario.lanterns[${idx}].fuel`);
+      if (fuel > 100) {
+        throw new ContractFileError(`scenario.lanterns[${idx}].fuel must be <= 100`);
+      }
+    }
     return {
       id: item.id,
       pos: item.pos !== undefined ? assertVec3(item.pos, `scenario.lanterns[${idx}].pos`) : undefined,
@@ -405,6 +436,8 @@ function parseScenarioLanterns(rawLanterns: unknown, night: NightNumber): Scenar
         item.deposited !== undefined
           ? assertNonNegInt(item.deposited, `scenario.lanterns[${idx}].deposited`)
           : undefined,
+      fuel,
+      ever_lit: item.ever_lit as boolean | undefined,
     };
   });
 }
@@ -432,7 +465,7 @@ function parseScenarioFile(filePath: string, night: NightNumber): ScenarioConfig
   }
 
   if (raw.motes !== undefined) scenario.motes = parseScenarioMotes(raw.motes);
-  if (raw.shades !== undefined) scenario.shades = parseScenarioShades(raw.shades);
+  if (raw.shades !== undefined) scenario.shades = parseScenarioShades(raw.shades, night);
   if (raw.drifters !== undefined) scenario.drifters = parseScenarioDrifters(raw.drifters);
   if (raw.charms !== undefined) scenario.charms = parseScenarioCharms(raw.charms, night);
   if (raw.lanterns !== undefined) scenario.lanterns = parseScenarioLanterns(raw.lanterns, night);
