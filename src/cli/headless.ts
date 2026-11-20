@@ -3,9 +3,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runHeadlessSimulation } from "../core/game.js";
 import type {
+  DrifterState,
   GameContract,
   InputFrame,
+  MoteKind,
+  NightNumber,
+  ScenarioCharmOverride,
   ScenarioConfig,
+  ScenarioDrifterOverride,
+  ScenarioLanternOverride,
+  ScenarioMoteInput,
+  ScenarioShadeOverride,
+  ShadeBehaviorState,
   Vec3Tuple,
 } from "../core/types.js";
 
@@ -19,12 +28,33 @@ class ContractFileError extends Error {
 
 interface ParsedCliArgs {
   seed: number;
-  night: number;
+  night: NightNumber;
   ticks: number;
   outPath: string;
   snapshotEvery: number;
   scenarioPath?: string;
   inputsPath?: string;
+}
+
+const VALID_SHADE_STATES = new Set<ShadeBehaviorState>([
+  "spawning",
+  "wander",
+  "chase",
+  "recoil",
+  "stunned",
+]);
+const VALID_DRIFTER_STATES = new Set<DrifterState>(["idle", "chase", "flee", "removed"]);
+const VALID_MOTE_KINDS = new Set<MoteKind>(["random", "dropped"]);
+
+function validLanternIdsForNight(night: NightNumber): Set<string> {
+  const count = night === 1 ? 5 : night === 2 ? 6 : 7;
+  return new Set(Array.from({ length: count }, (_, i) => `L${i + 1}`));
+}
+
+function validCharmIdsForNight(night: NightNumber): Set<string> {
+  if (night === 2) return new Set(["C1"]);
+  if (night === 3) return new Set(["C1", "C2"]);
+  return new Set();
 }
 
 function requireValue(argv: string[], index: number, flag: string): string {
@@ -96,11 +126,21 @@ function parseCliArgs(argv: string[]): ParsedCliArgs {
 
   if (seed === undefined) throw new CliArgError("Missing required flag: --seed");
   if (night === undefined) throw new CliArgError("Missing required flag: --night");
-  if (night !== 1) throw new CliArgError(`Unsupported --night ${night} (Phase 1 supports night 1)`);
+  if (night !== 1 && night !== 2 && night !== 3) {
+    throw new CliArgError(`Unsupported --night ${night} (Phase 2 supports nights 1, 2, 3)`);
+  }
   if (ticks === undefined) throw new CliArgError("Missing required flag: --ticks");
   if (!outPath) throw new CliArgError("Missing required flag: --out");
 
-  return { seed, night, ticks, outPath, snapshotEvery, scenarioPath, inputsPath };
+  return {
+    seed,
+    night,
+    ticks,
+    outPath,
+    snapshotEvery,
+    scenarioPath,
+    inputsPath,
+  };
 }
 
 function readJsonFile(filePath: string, label: string): unknown {
@@ -134,6 +174,20 @@ function assertVec3(val: unknown, ctx: string): Vec3Tuple {
   return [val[0] as number, val[1] as number, val[2] as number];
 }
 
+function assertNonNegInt(val: unknown, ctx: string): number {
+  if (typeof val !== "number" || !Number.isInteger(val) || val < 0) {
+    throw new ContractFileError(`${ctx} must be a non-negative integer`);
+  }
+  return val;
+}
+
+function assertNonNegFinite(val: unknown, ctx: string): number {
+  if (typeof val !== "number" || !Number.isFinite(val) || val < 0) {
+    throw new ContractFileError(`${ctx} must be a non-negative finite number`);
+  }
+  return val;
+}
+
 function parseInputsFile(filePath: string): InputFrame[] {
   const raw = readJsonFile(filePath, "inputs");
   if (!isPlainObject(raw) || !Array.isArray(raw.frames)) {
@@ -147,10 +201,7 @@ function parseInputsFile(filePath: string): InputFrame[] {
     if (!isPlainObject(item)) {
       throw new ContractFileError(`frames[${i}] must be an object`);
     }
-    const tick = item.tick;
-    if (typeof tick !== "number" || !Number.isInteger(tick) || tick < 0) {
-      throw new ContractFileError(`frames[${i}].tick must be a non-negative integer`);
-    }
+    const tick = assertNonNegInt(item.tick, `frames[${i}].tick`);
     if (tick <= prevTick) {
       throw new ContractFileError(
         `frames[${i}].tick (${tick}) must strictly increase after ${prevTick}`
@@ -175,12 +226,12 @@ function parseInputsFile(filePath: string): InputFrame[] {
       }
       frame.cam_yaw_deg = item.cam_yaw_deg;
     }
-    for (const key of ["jump", "interact", "pulse"] as const) {
+    for (const key of ["jump", "dash", "interact", "pulse", "pause"] as const) {
       if (item[key] !== undefined) {
         if (typeof item[key] !== "boolean") {
           throw new ContractFileError(`frames[${i}].${key} must be boolean`);
         }
-        frame[key] = item[key] as boolean;
+        frame[key] = item[key];
       }
     }
     frames.push(frame);
@@ -188,49 +239,191 @@ function parseInputsFile(filePath: string): InputFrame[] {
   return frames;
 }
 
-function parseScenarioFile(filePath: string): ScenarioConfig {
+function parseScenarioPlayer(rawPlayer: unknown): NonNullable<ScenarioConfig["player"]> {
+  if (!isPlainObject(rawPlayer)) {
+    throw new ContractFileError("scenario.player must be an object");
+  }
+  const player: NonNullable<ScenarioConfig["player"]> = {};
+  if (rawPlayer.pos !== undefined) {
+    player.pos = assertVec3(rawPlayer.pos, "scenario.player.pos");
+  }
+  for (const field of [
+    "carried",
+    "flames",
+    "invuln_ticks",
+    "dash_cd_ticks",
+    "pulse_cd_ticks",
+    "charm_ticks",
+  ] as const) {
+    if (rawPlayer[field] !== undefined) {
+      player[field] = assertNonNegInt(rawPlayer[field], `scenario.player.${field}`);
+    }
+  }
+  return player;
+}
+
+function parseScenarioMotes(rawMotes: unknown): ScenarioMoteInput[] {
+  if (!Array.isArray(rawMotes)) {
+    throw new ContractFileError("scenario.motes must be an array");
+  }
+  return rawMotes.map((item, idx) => {
+    if (Array.isArray(item)) {
+      return assertVec3(item, `scenario.motes[${idx}]`);
+    }
+    if (!isPlainObject(item) || item.pos === undefined) {
+      throw new ContractFileError(`scenario.motes[${idx}] must be [x,y,z] or {id?, pos, ...}`);
+    }
+    if (item.id !== undefined && typeof item.id !== "string") {
+      throw new ContractFileError(`scenario.motes[${idx}].id must be a string`);
+    }
+    if (item.kind !== undefined && !VALID_MOTE_KINDS.has(item.kind as MoteKind)) {
+      throw new ContractFileError(`scenario.motes[${idx}].kind must be "random" or "dropped"`);
+    }
+    return {
+      id: item.id as string | undefined,
+      pos: assertVec3(item.pos, `scenario.motes[${idx}].pos`),
+      kind: item.kind as MoteKind | undefined,
+      ttl_ticks:
+        item.ttl_ticks !== undefined
+          ? assertNonNegInt(item.ttl_ticks, `scenario.motes[${idx}].ttl_ticks`)
+          : undefined,
+      ttl_s:
+        item.ttl_s !== undefined
+          ? assertNonNegFinite(item.ttl_s, `scenario.motes[${idx}].ttl_s`)
+          : undefined,
+    };
+  });
+}
+
+function parseScenarioShades(rawShades: unknown): ScenarioShadeOverride[] {
+  if (!Array.isArray(rawShades)) {
+    throw new ContractFileError("scenario.shades must be an array");
+  }
+  return rawShades.map((item, idx) => {
+    if (!isPlainObject(item) || item.pos === undefined) {
+      throw new ContractFileError(`scenario.shades[${idx}] must be {pos, id?, state?, state_ticks_left?}`);
+    }
+    if (item.id !== undefined && typeof item.id !== "string") {
+      throw new ContractFileError(`scenario.shades[${idx}].id must be a string`);
+    }
+    if (item.state !== undefined && !VALID_SHADE_STATES.has(item.state as ShadeBehaviorState)) {
+      throw new ContractFileError(
+        `scenario.shades[${idx}].state must be spawning|wander|chase|recoil|stunned`
+      );
+    }
+    return {
+      id: item.id as string | undefined,
+      pos: assertVec3(item.pos, `scenario.shades[${idx}].pos`),
+      state: item.state as ShadeBehaviorState | undefined,
+      state_ticks_left:
+        item.state_ticks_left !== undefined
+          ? assertNonNegInt(item.state_ticks_left, `scenario.shades[${idx}].state_ticks_left`)
+          : undefined,
+    };
+  });
+}
+
+function parseScenarioDrifters(rawDrifters: unknown): ScenarioDrifterOverride[] {
+  if (!Array.isArray(rawDrifters)) {
+    throw new ContractFileError("scenario.drifters must be an array");
+  }
+  return rawDrifters.map((item, idx) => {
+    if (!isPlainObject(item) || item.pos === undefined) {
+      throw new ContractFileError(`scenario.drifters[${idx}] must be {pos, id?, state?, stolen?, state_ticks_left?}`);
+    }
+    if (item.id !== undefined && typeof item.id !== "string") {
+      throw new ContractFileError(`scenario.drifters[${idx}].id must be a string`);
+    }
+    if (item.state !== undefined && !VALID_DRIFTER_STATES.has(item.state as DrifterState)) {
+      throw new ContractFileError(`scenario.drifters[${idx}].state must be idle|chase|flee|removed`);
+    }
+    return {
+      id: item.id as string | undefined,
+      pos: assertVec3(item.pos, `scenario.drifters[${idx}].pos`),
+      state: item.state as DrifterState | undefined,
+      stolen:
+        item.stolen !== undefined
+          ? assertNonNegInt(item.stolen, `scenario.drifters[${idx}].stolen`)
+          : undefined,
+      state_ticks_left:
+        item.state_ticks_left !== undefined
+          ? assertNonNegInt(item.state_ticks_left, `scenario.drifters[${idx}].state_ticks_left`)
+          : undefined,
+    };
+  });
+}
+
+function parseScenarioCharms(rawCharms: unknown, night: NightNumber): ScenarioCharmOverride[] {
+  if (!Array.isArray(rawCharms)) {
+    throw new ContractFileError("scenario.charms must be an array");
+  }
+  const validIds = validCharmIdsForNight(night);
+  return rawCharms.map((item, idx) => {
+    if (!isPlainObject(item) || typeof item.id !== "string" || !validIds.has(item.id)) {
+      throw new ContractFileError(
+        `scenario.charms[${idx}].id "${String(item && (item as Record<string, unknown>).id)}" is not valid for Night ${night}`
+      );
+    }
+    if (item.available !== undefined && typeof item.available !== "boolean") {
+      throw new ContractFileError(`scenario.charms[${idx}].available must be boolean`);
+    }
+    return {
+      id: item.id,
+      pos: item.pos !== undefined ? assertVec3(item.pos, `scenario.charms[${idx}].pos`) : undefined,
+      available: item.available as boolean | undefined,
+      respawn_ticks:
+        item.respawn_ticks !== undefined
+          ? assertNonNegInt(item.respawn_ticks, `scenario.charms[${idx}].respawn_ticks`)
+          : undefined,
+      respawn_s:
+        item.respawn_s !== undefined
+          ? assertNonNegFinite(item.respawn_s, `scenario.charms[${idx}].respawn_s`)
+          : undefined,
+    };
+  });
+}
+
+function parseScenarioLanterns(rawLanterns: unknown, night: NightNumber): ScenarioLanternOverride[] {
+  if (!Array.isArray(rawLanterns)) {
+    throw new ContractFileError("scenario.lanterns must be an array");
+  }
+  const validIds = validLanternIdsForNight(night);
+  return rawLanterns.map((item, idx) => {
+    if (!isPlainObject(item) || typeof item.id !== "string" || !validIds.has(item.id)) {
+      throw new ContractFileError(
+        `scenario.lanterns[${idx}].id must be valid for Night ${night}`
+      );
+    }
+    if (item.lit !== undefined && typeof item.lit !== "boolean") {
+      throw new ContractFileError(`scenario.lanterns[${idx}].lit must be boolean`);
+    }
+    return {
+      id: item.id,
+      pos: item.pos !== undefined ? assertVec3(item.pos, `scenario.lanterns[${idx}].pos`) : undefined,
+      lit: item.lit as boolean | undefined,
+      deposited:
+        item.deposited !== undefined
+          ? assertNonNegInt(item.deposited, `scenario.lanterns[${idx}].deposited`)
+          : undefined,
+    };
+  });
+}
+
+function parseScenarioFile(filePath: string, night: NightNumber): ScenarioConfig {
   const raw = readJsonFile(filePath, "scenario");
   if (!isPlainObject(raw)) {
     throw new ContractFileError(`Scenario file "${filePath}" must be a JSON object`);
   }
   const scenario: ScenarioConfig = {};
 
-  if (raw.player !== undefined) {
-    if (!isPlainObject(raw.player)) {
-      throw new ContractFileError("scenario.player must be an object");
-    }
-    scenario.player = {};
-    if (raw.player.pos !== undefined) {
-      scenario.player.pos = assertVec3(raw.player.pos, "scenario.player.pos");
-    }
-    if (raw.player.carried !== undefined) {
-      if (
-        typeof raw.player.carried !== "number" ||
-        !Number.isInteger(raw.player.carried) ||
-        raw.player.carried < 0
-      ) {
-        throw new ContractFileError("scenario.player.carried must be a non-negative integer");
-      }
-      scenario.player.carried = raw.player.carried;
-    }
-    if (raw.player.flames !== undefined) {
-      if (
-        typeof raw.player.flames !== "number" ||
-        !Number.isInteger(raw.player.flames) ||
-        raw.player.flames < 0
-      ) {
-        throw new ContractFileError("scenario.player.flames must be a non-negative integer");
-      }
-      scenario.player.flames = raw.player.flames;
-    }
-  }
+  if (raw.player !== undefined) scenario.player = parseScenarioPlayer(raw.player);
 
-  for (const flag of ["random_motes", "random_shades"] as const) {
+  for (const flag of ["random_motes", "random_shades", "random_drifters", "wind_enabled"] as const) {
     if (raw[flag] !== undefined) {
       if (typeof raw[flag] !== "boolean") {
         throw new ContractFileError(`scenario.${flag} must be boolean`);
       }
-      scenario[flag] = raw[flag] as boolean;
+      scenario[flag] = raw[flag];
     }
   }
 
@@ -241,75 +434,11 @@ function parseScenarioFile(filePath: string): ScenarioConfig {
     scenario.time_left_s = raw.time_left_s;
   }
 
-  if (raw.motes !== undefined) {
-    if (!Array.isArray(raw.motes)) {
-      throw new ContractFileError("scenario.motes must be an array");
-    }
-    scenario.motes = raw.motes.map((item, idx) => {
-      if (Array.isArray(item)) {
-        return assertVec3(item, `scenario.motes[${idx}]`);
-      }
-      if (isPlainObject(item) && item.pos !== undefined) {
-        if (item.id !== undefined && typeof item.id !== "string") {
-          throw new ContractFileError(`scenario.motes[${idx}].id must be a string`);
-        }
-        return {
-          id: item.id as string | undefined,
-          pos: assertVec3(item.pos, `scenario.motes[${idx}].pos`),
-        };
-      }
-      throw new ContractFileError(`scenario.motes[${idx}] must be [x,y,z] or {id?, pos}`);
-    });
-  }
-
-  if (raw.shades !== undefined) {
-    if (!Array.isArray(raw.shades)) {
-      throw new ContractFileError("scenario.shades must be an array");
-    }
-    scenario.shades = raw.shades.map((item, idx) => {
-      if (!isPlainObject(item) || item.pos === undefined) {
-        throw new ContractFileError(`scenario.shades[${idx}] must be {pos, id?, state?}`);
-      }
-      if (item.id !== undefined && typeof item.id !== "string") {
-        throw new ContractFileError(`scenario.shades[${idx}].id must be a string`);
-      }
-      if (item.state !== undefined && item.state !== "chase" && item.state !== "stunned") {
-        throw new ContractFileError(`scenario.shades[${idx}].state must be "chase" or "stunned"`);
-      }
-      return {
-        id: item.id as string | undefined,
-        pos: assertVec3(item.pos, `scenario.shades[${idx}].pos`),
-        state: item.state as "chase" | "stunned" | undefined,
-      };
-    });
-  }
-
-  if (raw.lanterns !== undefined) {
-    if (!Array.isArray(raw.lanterns)) {
-      throw new ContractFileError("scenario.lanterns must be an array");
-    }
-    const validIds = new Set(["L1", "L2", "L3", "L4", "L5"]);
-    scenario.lanterns = raw.lanterns.map((item, idx) => {
-      if (!isPlainObject(item) || typeof item.id !== "string" || !validIds.has(item.id)) {
-        throw new ContractFileError(`scenario.lanterns[${idx}].id must be one of L1..L5`);
-      }
-      if (item.lit !== undefined && typeof item.lit !== "boolean") {
-        throw new ContractFileError(`scenario.lanterns[${idx}].lit must be boolean`);
-      }
-      if (
-        item.deposited !== undefined &&
-        (typeof item.deposited !== "number" || !Number.isInteger(item.deposited) || item.deposited < 0)
-      ) {
-        throw new ContractFileError(`scenario.lanterns[${idx}].deposited must be non-negative int`);
-      }
-      return {
-        id: item.id,
-        pos: item.pos !== undefined ? assertVec3(item.pos, `scenario.lanterns[${idx}].pos`) : undefined,
-        lit: item.lit as boolean | undefined,
-        deposited: item.deposited as number | undefined,
-      };
-    });
-  }
+  if (raw.motes !== undefined) scenario.motes = parseScenarioMotes(raw.motes);
+  if (raw.shades !== undefined) scenario.shades = parseScenarioShades(raw.shades);
+  if (raw.drifters !== undefined) scenario.drifters = parseScenarioDrifters(raw.drifters);
+  if (raw.charms !== undefined) scenario.charms = parseScenarioCharms(raw.charms, night);
+  if (raw.lanterns !== undefined) scenario.lanterns = parseScenarioLanterns(raw.lanterns, night);
 
   return scenario;
 }
@@ -325,11 +454,14 @@ function main(): void {
   try {
     const args = parseCliArgs(process.argv.slice(2));
     const contract = loadContractTuning();
-    const scenario = args.scenarioPath ? parseScenarioFile(args.scenarioPath) : undefined;
+    const scenario = args.scenarioPath
+      ? parseScenarioFile(args.scenarioPath, args.night)
+      : undefined;
     const frames = args.inputsPath ? parseInputsFile(args.inputsPath) : undefined;
 
     const lines = runHeadlessSimulation({
       seed: args.seed,
+      night: args.night,
       tuning: contract.tuning,
       scenario,
       frames,

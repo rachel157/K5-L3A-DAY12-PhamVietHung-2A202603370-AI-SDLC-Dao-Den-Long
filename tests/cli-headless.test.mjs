@@ -55,7 +55,7 @@ test("headless CLI runs scenario + inputs to deterministic won JSONL", () => {
   fs.writeFileSync(
     scenarioPath,
     JSON.stringify({
-      player: { pos: [0, 0, 0], carried: 2, flames: 3 },
+      player: { pos: [0, 0, 0], carried: 9, flames: 3 },
       random_motes: false,
       random_shades: false,
       motes: [[0, 0, 6]],
@@ -216,7 +216,11 @@ test("headless CLI exits 1 on missing or invalid CLI arguments", () => {
   try {
     assert.equal(runCli(["--seed", "1", "--ticks", "10", "--out", outPath]).status, 1);
     assert.equal(
-      runCli(["--seed", "1", "--night", "2", "--ticks", "10", "--out", outPath]).status,
+      runCli(["--seed", "1", "--night", "4", "--ticks", "10", "--out", outPath]).status,
+      1
+    );
+    assert.equal(
+      runCli(["--seed", "1", "--night", "0", "--ticks", "10", "--out", outPath]).status,
       1
     );
     assert.equal(runCli(["--seed", "1", "--night", "1", "--ticks", "10"]).status, 1);
@@ -234,6 +238,119 @@ test("headless CLI exits 1 on missing or invalid CLI arguments", () => {
         "0",
       ]).status,
       1
+    );
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("headless CLI supports Nights 2 and 3 deterministically and parses Contract v1.1 scenario & inputs", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cli-v11-"));
+  const n2Out1 = path.join(tmpDir, "n2a.jsonl");
+  const n2Out2 = path.join(tmpDir, "n2b.jsonl");
+  const n3ScenPath = path.join(tmpDir, "n3-scen.json");
+  const n3InputsPath = path.join(tmpDir, "n3-inputs.json");
+  const n3Out = path.join(tmpDir, "n3.jsonl");
+  const badDrifterPath = path.join(tmpDir, "bad-drifter.json");
+  const badDashInputPath = path.join(tmpDir, "bad-dash.json");
+  const errOut = path.join(tmpDir, "err.jsonl");
+
+  fs.writeFileSync(
+    n3ScenPath,
+    JSON.stringify({
+      player: {
+        pos: [0, 0, 0],
+        carried: 3,
+        flames: 3,
+        invuln_ticks: 10,
+        dash_cd_ticks: 0,
+        pulse_cd_ticks: 0,
+        charm_ticks: 0,
+      },
+      random_motes: false,
+      random_shades: false,
+      random_drifters: false,
+      wind_enabled: true,
+      motes: [{ id: "M1", pos: [0, 0, 5], kind: "dropped", ttl_ticks: 120 }],
+      shades: [{ id: "S1", pos: [0, 0.8, 35], state: "wander", state_ticks_left: 0 }],
+      drifters: [{ id: "D1", pos: [20, 1.6, 0], state: "idle" }],
+      charms: [{ id: "C1", available: false, respawn_ticks: 50 }],
+      lanterns: [{ id: "L7", lit: false, deposited: 5 }],
+    })
+  );
+
+  fs.writeFileSync(
+    n3InputsPath,
+    JSON.stringify({
+      frames: [
+        { tick: 0, move: [0, 1], dash: true },
+        { tick: 1, dash: false },
+        { tick: 5, pause: true },
+        { tick: 6, pause: false },
+        { tick: 10, pause: true },
+        { tick: 11, pause: false },
+      ],
+    })
+  );
+
+  fs.writeFileSync(
+    badDrifterPath,
+    JSON.stringify({ drifters: [{ id: "D1", pos: [0, 1, 0], state: "flying" }] })
+  );
+  fs.writeFileSync(
+    badDashInputPath,
+    JSON.stringify({ frames: [{ tick: 0, dash: "yes" }] })
+  );
+
+  try {
+    const r2a = runCli(["--seed", "7", "--night", "2", "--ticks", "30", "--out", n2Out1]);
+    const r2b = runCli(["--seed", "7", "--night", "2", "--ticks", "30", "--out", n2Out2]);
+    assert.equal(r2a.status, 0, r2a.stderr);
+    assert.equal(r2b.status, 0, r2b.stderr);
+    assert.equal(fs.readFileSync(n2Out1, "utf8"), fs.readFileSync(n2Out2, "utf8"));
+    const n2Records = readJsonl(n2Out1);
+    assert.equal(n2Records[0].night, 2);
+    assert.equal(n2Records[0].lanterns.length, 6);
+    assert.equal(n2Records[0].charms[0].id, "C1");
+
+    const r3 = runCli([
+      "--seed",
+      "9",
+      "--night",
+      "3",
+      "--scenario",
+      n3ScenPath,
+      "--inputs",
+      n3InputsPath,
+      "--ticks",
+      "20",
+      "--snapshot-every",
+      "5",
+      "--out",
+      n3Out,
+    ]);
+    assert.equal(r3.status, 0, r3.stderr);
+    const n3Records = readJsonl(n3Out);
+    assert.equal(n3Records[0].night, 3);
+    assert.equal(n3Records[0].lanterns.length, 7);
+    const eventNames = n3Records.filter((r) => r.type === "event").map((r) => r.name);
+    assert.ok(eventNames.includes("night_start"));
+    assert.ok(eventNames.includes("dash"));
+    assert.ok(eventNames.includes("paused"));
+    assert.ok(eventNames.includes("resumed"));
+    const snap10 = n3Records.find((r) => r.type === "snapshot" && r.tick === 10);
+    assert.equal(snap10.state, "paused");
+
+    // Validation errors for v1.1 schema must exit 2
+    assert.equal(
+      runCli(["--seed", "1", "--night", "2", "--scenario", badDrifterPath, "--ticks", "5", "--out", errOut])
+        .status,
+      2
+    );
+    assert.equal(
+      runCli(["--seed", "1", "--night", "2", "--inputs", badDashInputPath, "--ticks", "5", "--out", errOut])
+        .status,
+      2
     );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });

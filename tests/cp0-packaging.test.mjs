@@ -28,7 +28,7 @@ function runInNativeShell(cmd, cwd) {
   return spawnSync("sh", ["-c", cmd], { cwd, encoding: "utf8" });
 }
 
-test("documented Test Contract v1.0 headless commands in README and verify-phase skill succeed in native shell", () => {
+test("documented Test Contract v1.1 headless commands in README and verify-phase skill succeed in native shell", () => {
   const repoRoot = path.resolve(".");
   const cliAbs = path.join(repoRoot, "dist-cli", "cli", "headless.js");
   const files = ["README.md", ".agents/skills/verify-phase/SKILL.md"];
@@ -38,7 +38,7 @@ test("documented Test Contract v1.0 headless commands in README and verify-phase
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pkg-headless-"));
   try {
     for (const cmd of commands) {
-      assert.ok(cmd.includes("--night 1"), `Expected --night 1 in documented command: ${cmd}`);
+      assert.match(cmd, /--night\s+(1|2|3)\b/, `Expected --night 1|2|3 in documented command: ${cmd}`);
       assert.ok(cmd.includes("--out "), `Expected --out in documented command: ${cmd}`);
       const portableCmd = cmd.replace("dist-cli/cli/headless.js", `"${cliAbs}"`);
       const res = runInNativeShell(portableCmd, tmpDir);

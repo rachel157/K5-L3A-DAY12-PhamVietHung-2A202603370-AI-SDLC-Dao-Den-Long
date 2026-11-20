@@ -24,12 +24,16 @@ Run this procedure at the end of every phase before committing proof or creating
    ```
    Verify 0 failures across all `tests/*.test.mjs` files.
 
-3. **Determinism check (two identical headless runs across bash/PowerShell):**
+3. **Determinism check (two identical headless runs per night across bash/PowerShell):**
    ```bash
-   node dist-cli/cli/headless.js --seed 7 --night 1 --ticks 60 --out verify-run1.jsonl
-   node dist-cli/cli/headless.js --seed 7 --night 1 --ticks 60 --out verify-run2.jsonl
+   node dist-cli/cli/headless.js --seed 7 --night 1 --ticks 60 --out verify-n1-r1.jsonl
+   node dist-cli/cli/headless.js --seed 7 --night 1 --ticks 60 --out verify-n1-r2.jsonl
+   node dist-cli/cli/headless.js --seed 7 --night 2 --ticks 60 --out verify-n2-r1.jsonl
+   node dist-cli/cli/headless.js --seed 7 --night 2 --ticks 60 --out verify-n2-r2.jsonl
+   node dist-cli/cli/headless.js --seed 7 --night 3 --ticks 60 --out verify-n3-r1.jsonl
+   node dist-cli/cli/headless.js --seed 7 --night 3 --ticks 60 --out verify-n3-r2.jsonl
    ```
-   Confirm `verify-run1.jsonl` and `verify-run2.jsonl` are byte-for-byte identical, then delete the temporary `.jsonl` files.
+   Confirm each night's `r1` and `r2` are byte-for-byte identical (plus benchmark 21,600 ticks on Night 3 completes in <= 30s), then delete the temporary `.jsonl` files.
 
 4. **Clean git state & secret check:**
    Run `git status` and confirm no `.env`, API keys, or temporary artifacts are staged.
