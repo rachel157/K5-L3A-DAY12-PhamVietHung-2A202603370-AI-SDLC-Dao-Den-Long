@@ -98,3 +98,40 @@ export function applyPauseResumeAction(world, action, camYawDeg, stepWorld, onEv
   }
   return world.state;
 }
+
+/**
+ * Computes pure Phase 3 visual state for each lantern:
+ * - unlit lanterns squash vertically by 20% (`scaleY = 0.8`) and show dark paper tears
+ * - lit lanterns show the 3D fuel bar and keep the safe ring while `fuel >= lowFuelThreshold`
+ * - lit lanterns with `fuel < lowFuelThreshold` blink slowly at 1 Hz (`blinkOn`)
+ */
+export function computeLanternVisualState({
+  lit,
+  fuel,
+  fuelMax,
+  lowFuelThreshold,
+  nowSec,
+}) {
+  const safeMax = Math.max(1e-6, fuelMax);
+  const fuelRatio = lit ? Math.max(0, Math.min(1, fuel / safeMax)) : 0;
+  const blinking = Boolean(lit && fuel < lowFuelThreshold);
+  const cyclePos = ((nowSec % 1) + 1) % 1;
+  const blinkOn = !blinking || cyclePos < 0.5;
+  return {
+    scaleY: lit ? 1 : 0.8,
+    tearsVisible: !lit,
+    fuelBarVisible: Boolean(lit),
+    fuelRatio,
+    safeRingVisible: Boolean(lit && fuel >= lowFuelThreshold),
+    blinking,
+    blinkOn,
+  };
+}
+
+/**
+ * Prefixes `⚠ ` on warnings when Colorblind Mode is active without duplicating existing symbols.
+ */
+export function formatColorblindAlert(text, colorblindMode) {
+  if (!colorblindMode || text.startsWith("⚠")) return text;
+  return `⚠ ${text}`;
+}

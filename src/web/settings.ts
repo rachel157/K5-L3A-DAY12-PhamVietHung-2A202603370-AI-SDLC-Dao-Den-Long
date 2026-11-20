@@ -6,6 +6,7 @@ export interface StorageLike {
 export interface GameSettings {
   volume: number;
   mouseSensitivity: number;
+  colorblindMode: boolean;
 }
 
 export const SETTINGS_STORAGE_KEY = "dao-den-long:settings:v1";
@@ -13,6 +14,7 @@ export const SETTINGS_STORAGE_KEY = "dao-den-long:settings:v1";
 export const DEFAULT_SETTINGS: GameSettings = {
   volume: 0.7,
   mouseSensitivity: 1.0,
+  colorblindMode: false,
 };
 
 function clamp(val: number, min: number, max: number, fallback: number): number {
@@ -29,6 +31,10 @@ export function normalizeSettings(input?: Partial<GameSettings> | null): GameSet
       2.5,
       DEFAULT_SETTINGS.mouseSensitivity
     ),
+    colorblindMode:
+      typeof input?.colorblindMode === "boolean"
+        ? input.colorblindMode
+        : DEFAULT_SETTINGS.colorblindMode,
   };
 }
 

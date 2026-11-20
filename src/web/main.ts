@@ -12,39 +12,59 @@ import {
 } from "./visualHelpers.js";
 import { WorldSceneRenderer } from "./worldScene.js";
 
-function findInteractTargetDeposited(world: GameWorld): number | null {
+function findInteractPrompt(world: GameWorld): string | null {
   const px = world.player.pos[0];
   const py = world.player.pos[1];
   const pz = world.player.pos[2];
+  const maxFuelSixtieths = Math.round(world.tuning.fuel_max * TICKS_PER_SEC);
   let bestDist = Infinity;
-  let bestDeposited: number | null = null;
+  let bestId = "";
+  let bestPrompt: string | null = null;
   for (const lantern of world.lanterns) {
-    if (lantern.lit) continue;
+    const canRefuel = lantern.lit && lantern.fuelSixtieths < maxFuelSixtieths;
+    const cost = lantern.everLit ? world.tuning.relight_cost : world.tuning.lantern_cost;
+    const canDeposit = !lantern.lit && lantern.deposited < cost;
+    if (!canRefuel && !canDeposit) continue;
     const dx = lantern.pos[0] - px;
     const dz = lantern.pos[2] - pz;
     const dy = Math.abs(lantern.pos[1] - py);
     const distXZ = Math.hypot(dx, dz);
-    if (distXZ <= world.tuning.interact_radius && dy <= 1.5 && distXZ < bestDist) {
-      bestDist = distXZ;
-      bestDeposited = lantern.deposited;
+    if (distXZ <= world.tuning.interact_radius && dy <= 1.5) {
+      if (distXZ < bestDist - 1e-4 || (Math.abs(distXZ - bestDist) <= 1e-4 && lantern.id < bestId)) {
+        bestDist = distXZ;
+        bestId = lantern.id;
+        if (lantern.lit) {
+          const fuelRounded = Math.round(lantern.fuelSixtieths / TICKS_PER_SEC);
+          bestPrompt = `E — Châm dầu (${fuelRounded}/100)`;
+        } else if (lantern.everLit) {
+          bestPrompt = `E — Thắp lại (${lantern.deposited}/${cost})`;
+        } else {
+          bestPrompt = `E — Nạp ánh sáng (${lantern.deposited}/${cost})`;
+        }
+      }
     }
   }
-  return bestDeposited;
+  return bestPrompt;
 }
 
-function findNearestUnlitLanternPos(world: GameWorld): [number, number, number] | null {
+function findUrgentArrowTargetPos(world: GameWorld): [number, number, number] | null {
   const [px, py, pz] = world.player.pos;
-  let bestDist = Infinity;
-  let bestPos: [number, number, number] | null = null;
+  const lowSixtieths = Math.round(world.tuning.low_fuel_threshold * TICKS_PER_SEC);
+  let bestUnlitDist = Infinity;
+  let bestUnlitPos: [number, number, number] | null = null;
+  let bestWeakDist = Infinity;
+  let bestWeakPos: [number, number, number] | null = null;
   for (const lantern of world.lanterns) {
-    if (lantern.lit) continue;
     const d = Math.hypot(lantern.pos[0] - px, lantern.pos[1] - py, lantern.pos[2] - pz);
-    if (d < bestDist) {
-      bestDist = d;
-      bestPos = [lantern.pos[0], lantern.pos[1] + 2.5, lantern.pos[2]];
+    if (!lantern.lit && d < bestUnlitDist) {
+      bestUnlitDist = d;
+      bestUnlitPos = [lantern.pos[0], lantern.pos[1] + 2.5, lantern.pos[2]];
+    } else if (lantern.lit && lantern.fuelSixtieths < lowSixtieths && d < bestWeakDist) {
+      bestWeakDist = d;
+      bestWeakPos = [lantern.pos[0], lantern.pos[1] + 2.5, lantern.pos[2]];
     }
   }
-  return bestPos;
+  return bestUnlitPos ?? bestWeakPos;
 }
 
 function startApp(): void {
@@ -114,7 +134,10 @@ function startApp(): void {
     audio.unlock();
     audio.startBgm();
     ui.showPlaying();
-    ui.showBanner(`${NIGHT_METADATA[currentNight].title} — Hãy thắp sáng ${world.lanterns.length} Đèn Lồng!`);
+    const required = Math.ceil(world.tuning.win_ratio * world.lanterns.length);
+    ui.showBanner(
+      `${NIGHT_METADATA[currentNight].title} — Giữ ≥ ${required}/${world.lanterns.length} đèn sáng tới bình minh!`
+    );
   }
 
   function togglePause(): void {
@@ -165,9 +188,11 @@ function startApp(): void {
     onChangeSettings: (next) => {
       settings = saveSettings(next);
       audio.setVolume(settings.volume);
+      worldRenderer.setColorblindMode(settings.colorblindMode);
     },
   });
 
+  worldRenderer.setColorblindMode(settings.colorblindMode);
   ui.setMuteLabel(audio.isMuted());
   ui.showMainMenu();
 
@@ -180,9 +205,22 @@ function startApp(): void {
         ui.showBanner("Nhặt Bùa Gió! Tăng tốc & lướt không hồi chiêu (10s)");
       } else if (ev.name === "deposit") {
         audio.playDeposit();
+      } else if (ev.name === "refuel") {
+        audio.playRefuel();
+        ui.showBanner(`Đã châm +${ev.data.amount} đom đóm (${Math.round(ev.data.fuel)}/100 dầu)`);
       } else if (ev.name === "lantern_lit") {
         audio.playLanternLit();
-        ui.showBanner(`Đã thắp sáng Đèn Lồng ${ev.data.lantern_id}!`);
+        ui.showBanner(
+          ev.data.relight
+            ? `Đã thắp lại Đèn Lồng ${ev.data.lantern_id}!`
+            : `Đã thắp sáng Đèn Lồng ${ev.data.lantern_id}! Sức chứa +2!`
+        );
+      } else if (ev.name === "lantern_out") {
+        audio.playLanternOut();
+        ui.showBanner(`Đèn Lồng ${ev.data.lantern_id} đã cạn dầu!`, true);
+      } else if (ev.name === "fuel_drain") {
+        audio.playFuelWarn();
+        ui.showBanner(`Bóng Mực đang hút dầu Đèn ${ev.data.lantern_id}!`, true);
       } else if (ev.name === "pulse") {
         audio.playPulse();
         worldRenderer.spawnPulseWave(
@@ -197,16 +235,17 @@ function startApp(): void {
         audio.playDash();
       } else if (ev.name === "shade_spawned") {
         audio.playShadeSpawn();
-        ui.showBanner("Bóng Mực vừa xuất hiện trong sương!");
+        ui.showBanner("Bóng Mực vừa xuất hiện trong sương!", true);
       } else if (ev.name === "drifter_steal") {
         audio.playDrifterSteal();
-        ui.showBanner(`Gió Lạc vừa cướp ${ev.data.amount} đom đóm! Hãy Tỏa Sáng để lấy lại!`);
+        ui.showBanner(`Gió Lạc vừa cướp ${ev.data.amount} đom đóm! Hãy Tỏa Sáng để lấy lại!`, true);
       } else if (ev.name === "player_hit") {
         audio.playHit();
         ui.showBanner(
           ev.data.by === "fall"
             ? "Rơi xuống biển mây! Đang hồi sinh..."
-            : "Bị Bóng Mực chạm phải!"
+            : "Bị Bóng Mực chạm phải!",
+          true
         );
       } else if (ev.name === "game_over" && !resultShown) {
         resultShown = true;
@@ -360,12 +399,12 @@ function startApp(): void {
     camera.lookAt(world.player.pos[0], world.player.pos[1] + 1.15, world.player.pos[2]);
     camera.updateMatrixWorld();
 
-    worldRenderer.sync(world, nowMs / 1000, dtFrame);
+    worldRenderer.sync(world, nowMs / 1000, dtFrame, camera.position);
 
     let nearestArrow = { visible: false, x: 0, y: 0, angleDeg: 0 };
-    const nearestUnlitPos = findNearestUnlitLanternPos(world);
-    if (nearestUnlitPos && screenMode === "playing") {
-      tmpVec.set(nearestUnlitPos[0], nearestUnlitPos[1], nearestUnlitPos[2]);
+    const urgentPos = findUrgentArrowTargetPos(world);
+    if (urgentPos && screenMode === "playing") {
+      tmpVec.set(urgentPos[0], urgentPos[1], urgentPos[2]);
       tmpVec.applyMatrix4(camera.matrixWorldInverse);
       nearestArrow = computeOffscreenLanternArrow(
         [tmpVec.x, tmpVec.y, tmpVec.z],
@@ -377,7 +416,7 @@ function startApp(): void {
     }
 
     ui.updateHud(toSnapshot(world), {
-      nearestUnlitDeposited: findInteractTargetDeposited(world),
+      interactPrompt: findInteractPrompt(world),
       nearestArrow,
       windWarning: world.wind.enabled && world.wind.warning,
       windActive: world.wind.enabled && world.wind.active,

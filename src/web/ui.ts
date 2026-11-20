@@ -1,6 +1,7 @@
+import { DEFAULT_TUNING } from "../core/contract.js";
 import type { GameSnapshot, NightNumber } from "../core/types.js";
 import type { GameSettings } from "./settings.js";
-import { bindHudActionButton } from "./visualHelpers.js";
+import { bindHudActionButton, formatColorblindAlert } from "./visualHelpers.js";
 
 export type ScreenMode =
   | "menu"
@@ -23,21 +24,21 @@ export const NIGHT_METADATA: Record<NightNumber, NightMetadata> = {
     islandName: "Đảo Bến",
     title: "Đêm 1 · Đảo Bến",
     ongDangSpeech:
-      "Ông Đăng: “Sương đen đã nuốt trọn năm ngọn đèn bến cảng. Mây hãy nhặt đom đóm, nhấn E nạp ánh sáng và thắp lại đảo trước bình minh nhé!”",
+      "Ông Đăng: “Sương đen đang hút cạn dầu! Mây hãy nhặt đom đóm, nhấn E thắp hoặc châm dầu, và giữ ít nhất 3/5 đèn sáng tới bình minh (04:00) nhé!”",
   },
   2: {
     night: 2,
     islandName: "Đảo Cau",
     title: "Đêm 2 · Đảo Cau",
     ongDangSpeech:
-      "Ông Đăng: “Đêm nay có hai hòn đảo nối bằng cầu tre và bục gió. Hãy nhặt Bùa Gió ở giữa cầu để lướt liên tiếp — cẩn thận lũ Gió Lạc rình cướp đom đóm đấy!”",
+      "Ông Đăng: “Hai hòn đảo nối bằng cầu tre và bục gió. Giữ ít nhất 4/6 đèn sáng tới bình minh — mỗi đèn thắp mới sẽ giúp túi đom đóm chứa thêm +2 (tối đa 20)!”",
   },
   3: {
     night: 3,
     islandName: "Đảo Chuông",
     title: "Đêm 3 · Đảo Chuông",
     ongDangSpeech:
-      "Ông Đăng: “Đêm cuối trên đảo ba tầng gió mạnh! Theo hai con dốc đá hoặc bục nhảy lên Tháp Chuông, giữ vững bước chân khi gió nổi và thắp đủ 7 ngọn đèn!”",
+      "Ông Đăng: “Đêm cuối 300s trên đảo ba tầng gió mạnh! Coi chừng Bóng Mực hút cạn đèn có dầu < 30; hãy giữ đủ 5/7 đèn sáng đến bình minh!”",
   },
 };
 
@@ -54,7 +55,7 @@ export interface GameUIHandlers {
 }
 
 export interface HudDynamicView {
-  nearestUnlitDeposited: number | null;
+  interactPrompt: string | null;
   nearestArrow: { visible: boolean; x: number; y: number; angleDeg: number };
   windWarning: boolean;
   windActive: boolean;
@@ -97,6 +98,7 @@ export class GameUI {
   private readonly volValEl = el<HTMLElement>("setting-vol-val");
   private readonly sensInput = el<HTMLInputElement>("setting-sens");
   private readonly sensValEl = el<HTMLElement>("setting-sens-val");
+  private readonly colorblindInput = el<HTMLInputElement>("setting-colorblind");
   private readonly settingsMuteBtn = el<HTMLButtonElement>("btn-settings-mute");
   private readonly modalActionsEl = el<HTMLElement>("modal-actions");
 
@@ -113,7 +115,7 @@ export class GameUI {
   ) {
     this.settings = { ...initialSettings };
 
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < DEFAULT_TUNING.capacity_max; i++) {
       const slot = document.createElement("div");
       slot.className = "mote-slot";
       this.moteSlotsContainer.appendChild(slot);
@@ -136,6 +138,12 @@ export class GameUI {
       this.handlers.onChangeSettings({ ...this.settings });
     });
 
+    this.colorblindInput.addEventListener("change", () => {
+      this.settings.colorblindMode = this.colorblindInput.checked;
+      this.syncSettingsInputs();
+      this.handlers.onChangeSettings({ ...this.settings });
+    });
+
     this.syncSettingsInputs();
   }
 
@@ -144,6 +152,8 @@ export class GameUI {
     this.volValEl.textContent = `${Math.round(this.settings.volume * 100)}%`;
     this.sensInput.value = String(Math.round(this.settings.mouseSensitivity * 100));
     this.sensValEl.textContent = `${this.settings.mouseSensitivity.toFixed(2)}x`;
+    this.colorblindInput.checked = this.settings.colorblindMode;
+    document.body.classList.toggle("colorblind", this.settings.colorblindMode);
   }
 
   setMuteLabel(muted: boolean): void {
@@ -152,8 +162,11 @@ export class GameUI {
     this.settingsMuteBtn.textContent = muted ? "Đang tắt tiếng — Bấm để bật" : "Đang bật tiếng — Bấm để tắt";
   }
 
-  showBanner(text: string): void {
-    this.bannerEl.textContent = text;
+  showBanner(text: string, isAlert = false): void {
+    this.bannerEl.textContent = isAlert
+      ? formatColorblindAlert(text, this.settings.colorblindMode)
+      : text;
+    this.bannerEl.classList.toggle("alert", isAlert);
     this.bannerEl.classList.add("visible");
     if (this.bannerTimeout !== null) window.clearTimeout(this.bannerTimeout);
     this.bannerTimeout = window.setTimeout(() => {
@@ -196,9 +209,9 @@ export class GameUI {
     this.clearActions();
 
     this.modalTitleEl.textContent = "Đảo Đèn Lồng";
-    this.modalSubtitleEl.textContent = "Hành trình 3 đêm thắp sáng quần đảo giữa biển mây";
+    this.modalSubtitleEl.textContent = "Hành trình 3 đêm giữ ánh sáng tới bình minh";
     this.modalBodyEl.textContent =
-      "Điều khiển Mây thu thập đom đóm, lướt qua gió sương, xua tan Bóng Mực và thắp sáng các Đèn Lồng Lớn trước khi bình minh lên.";
+      "Điều khiển Mây thu thập đom đóm, châm dầu cho các đèn suy yếu, đẩy lùi Bóng Mực và giữ đủ đèn sáng tới bình minh.";
 
     this.addActionButton("Chơi từ Đêm 1 · Đảo Bến", () => this.handlers.onStartCampaign(1));
 
@@ -281,18 +294,20 @@ export class GameUI {
     this.overlayEl.classList.add("open");
     this.clearActions();
 
+    const requiredLit = Math.ceil(DEFAULT_TUNING.win_ratio * params.lanternsTotal);
+
     if (params.won && params.night === 3) {
       this.modalTitleEl.textContent = "Bình Minh Đã Lên!";
-      this.modalSubtitleEl.textContent = "Hoàn thành cả 3 Đêm Quần Đảo Đèn Lồng";
-      this.modalBodyEl.textContent = `Mây đã thắp sáng toàn bộ Đảo Bến, Đảo Cau và Đảo Chuông! Điểm Đêm 3: ${params.nightScore} · Tổng điểm chiến dịch: ${params.totalScore}.`;
+      this.modalSubtitleEl.textContent = "Sống sót giữ sáng Quần đảo suốt 3 Đêm";
+      this.modalBodyEl.textContent = `Mây đã giữ ${params.lanternsLit}/${params.lanternsTotal} đèn sáng đến bình minh (cần ≥ ${requiredLit})! Điểm Đêm 3: ${params.nightScore} · Tổng điểm chiến dịch: ${params.totalScore}.`;
       this.addActionButton("Chơi lại từ Đêm 1", () => this.handlers.onStartCampaign(1));
       this.addActionButton("Về menu chính", () => this.handlers.onReturnMenu(), true);
       return;
     }
 
     if (params.won) {
-      this.modalTitleEl.textContent = `Thắp sáng ${NIGHT_METADATA[params.night].islandName}!`;
-      this.modalSubtitleEl.textContent = `Đèn sáng: ${params.lanternsLit} / ${params.lanternsTotal}`;
+      this.modalTitleEl.textContent = `Bình minh trên ${NIGHT_METADATA[params.night].islandName}!`;
+      this.modalSubtitleEl.textContent = `Đèn sáng lúc bình minh: ${params.lanternsLit} / ${params.lanternsTotal} (cần ≥ ${requiredLit})`;
       this.modalBodyEl.textContent = `Điểm Đêm ${params.night}: ${params.nightScore} · Tổng điểm hiện tại: ${params.totalScore}.`;
       this.addActionButton(`Sang Đêm ${params.night + 1}`, () => this.handlers.onNextNight());
       this.addActionButton("Chơi lại Đêm này", () => this.handlers.onRestartNight(), true);
@@ -304,8 +319,8 @@ export class GameUI {
     this.modalSubtitleEl.textContent =
       params.reason === "no_flames"
         ? "Mây đã mất hết Ngọn Lửa."
-        : "Trời đã hừng đông trước khi thắp đủ đèn.";
-    this.modalBodyEl.textContent = `Đèn đã thắp: ${params.lanternsLit} / ${params.lanternsTotal} · Điểm Đêm ${params.night}: ${params.nightScore}.`;
+        : `Trời đã hừng đông nhưng chỉ còn ${params.lanternsLit}/${params.lanternsTotal} đèn sáng (cần ≥ ${requiredLit}).`;
+    this.modalBodyEl.textContent = `Điểm Đêm ${params.night}: ${params.nightScore}.`;
     this.addActionButton("Chơi lại Đêm", () => this.handlers.onRestartNight());
     this.addActionButton("Về menu chính", () => this.handlers.onReturnMenu(), true);
   }
@@ -331,32 +346,43 @@ export class GameUI {
     }
 
     if (dyn.windActive) {
-      this.windPillEl.textContent = `Gió mạnh đang thổi (${Math.round(dyn.windDirDeg)}°)`;
-      this.windPillEl.classList.add("visible");
+      this.windPillEl.textContent = formatColorblindAlert(
+        `Gió mạnh đang thổi (${Math.round(dyn.windDirDeg)}°)`,
+        this.settings.colorblindMode
+      );
+      this.windPillEl.classList.add("visible", "alert");
     } else if (dyn.windWarning) {
-      this.windPillEl.textContent = `Sắp có gió mạnh (${Math.round(dyn.windDirDeg)}°)`;
-      this.windPillEl.classList.add("visible");
+      this.windPillEl.textContent = formatColorblindAlert(
+        `Sắp có gió mạnh (${Math.round(dyn.windDirDeg)}°)`,
+        this.settings.colorblindMode
+      );
+      this.windPillEl.classList.add("visible", "alert");
     } else {
-      this.windPillEl.classList.remove("visible");
+      this.windPillEl.classList.remove("visible", "alert");
     }
 
     // Zone 2: Clock
     const secs = Math.max(0, Math.ceil(snap.time_left_s));
     const mm = String(Math.floor(secs / 60)).padStart(2, "0");
     const ss = String(secs % 60).padStart(2, "0");
-    this.timeEl.textContent = `${mm}:${ss}`;
-    this.timeEl.classList.toggle("urgent", secs <= 30 && snap.state === "playing");
+    const isUrgent = secs <= 30 && snap.state === "playing";
+    this.timeEl.textContent = isUrgent && this.settings.colorblindMode ? `⚠ ${mm}:${ss}` : `${mm}:${ss}`;
+    this.timeEl.classList.toggle("urgent", isUrgent);
 
     // Zone 3: Lanterns & Score
     const litCount = snap.lanterns.filter((l) => l.lit).length;
-    this.lanternsEl.textContent = `${litCount} / ${snap.lanterns.length}`;
+    const required = Math.ceil(DEFAULT_TUNING.win_ratio * snap.lanterns.length);
+    this.lanternsEl.textContent = `${litCount} / ${snap.lanterns.length} (≥${required})`;
     this.scoreEl.textContent = String(snap.score);
     this.totalScoreEl.textContent = String(dyn.totalScore);
 
-    // Zone 4: 10 Firefly Slots
-    this.moteLabelEl.textContent = `Đom đóm: ${snap.player.carried} / 10`;
+    // Zone 4: Dynamic Capacity Firefly Slots (10 -> 20)
+    this.moteLabelEl.textContent = `Đom đóm: ${snap.player.carried} / ${snap.player.capacity}`;
     for (let i = 0; i < this.moteSlotDivs.length; i++) {
-      this.moteSlotDivs[i]?.classList.toggle("filled", i < snap.player.carried);
+      const slot = this.moteSlotDivs[i];
+      if (!slot) continue;
+      slot.style.display = i < snap.player.capacity ? "" : "none";
+      slot.classList.toggle("filled", i < snap.player.carried);
     }
 
     // Zone 5: Dash & Pulse Cooldowns
@@ -383,8 +409,8 @@ export class GameUI {
     }
 
     // Zone 6: E Interact Prompt
-    if (dyn.nearestUnlitDeposited !== null && snap.state === "playing") {
-      this.interactPromptEl.textContent = `E — Nạp ánh sáng (${dyn.nearestUnlitDeposited}/10)`;
+    if (dyn.interactPrompt !== null && snap.state === "playing") {
+      this.interactPromptEl.textContent = dyn.interactPrompt;
       this.interactPromptEl.classList.add("visible");
     } else {
       this.interactPromptEl.classList.remove("visible");

@@ -46,3 +46,23 @@ export function applyPauseResumeAction<
   stepWorld: (world: TWorld, patch: TPatch) => TEvent[],
   onEvents: (events: TEvent[]) => void
 ): string;
+
+export interface LanternVisualState {
+  scaleY: number;
+  tearsVisible: boolean;
+  fuelBarVisible: boolean;
+  fuelRatio: number;
+  safeRingVisible: boolean;
+  blinking: boolean;
+  blinkOn: boolean;
+}
+
+export function computeLanternVisualState(params: {
+  lit: boolean;
+  fuel: number;
+  fuelMax: number;
+  lowFuelThreshold: number;
+  nowSec: number;
+}): LanternVisualState;
+
+export function formatColorblindAlert(text: string, colorblindMode: boolean): string;

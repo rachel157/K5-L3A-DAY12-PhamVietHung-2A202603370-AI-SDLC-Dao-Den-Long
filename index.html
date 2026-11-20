@@ -138,8 +138,22 @@
         transition: opacity 0.2s ease;
         white-space: nowrap;
       }
+      #status-banner.alert {
+        background: rgba(255, 90, 95, 0.24);
+        border-color: rgba(255, 90, 95, 0.75);
+        color: #ffd8da;
+      }
       #status-banner.visible {
         opacity: 1;
+      }
+      /* Colorblind accessibility palette (#FFFFFF high-contrast alerts) */
+      body.colorblind #status-banner.alert,
+      body.colorblind #hud-time.urgent,
+      body.colorblind #hud-wind-pill.alert {
+        color: #ffffff;
+        background: rgba(255, 255, 255, 0.16);
+        border-color: #ffffff;
+        box-shadow: 0 0 14px rgba(255, 255, 255, 0.45);
       }
       /* Zone 3: Top-Right (Lanterns, Score, Mute, Pause) */
       #hud-top-right {
@@ -213,10 +227,12 @@
       }
       #mote-slots {
         display: flex;
-        gap: 5px;
+        gap: 4px;
+        flex-wrap: wrap;
+        justify-content: center;
       }
       .mote-slot {
-        width: 18px;
+        width: 12px;
         height: 12px;
         border-radius: 3px;
         background: rgba(245, 241, 230, 0.14);
@@ -407,6 +423,21 @@
         accent-color: var(--gold);
         cursor: pointer;
       }
+      .setting-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 13px;
+        color: var(--cream);
+        cursor: pointer;
+      }
+      .setting-toggle input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        accent-color: #00b3ff;
+        cursor: pointer;
+      }
     </style>
   </head>
   <body>
@@ -419,7 +450,7 @@
       </div>
 
       <div id="hud-top-center">
-        <div id="hud-time" class="hud-card">05:00</div>
+        <div id="hud-time" class="hud-card">04:00</div>
         <div id="status-banner"></div>
       </div>
 
@@ -462,7 +493,7 @@
 
       <div id="controls" class="hud-card">
         <strong>Điều khiển:</strong> WASD/Mũi tên · Chuột kéo/Q,C: Xoay · Space: Nhảy ·
-        Shift/Chuột phải: Lướt · E: Nạp đèn · R/F: Tỏa sáng · Esc/P: Tạm dừng
+        Shift/Chuột phải: Lướt · E: Nạp/Châm dầu · R/F: Tỏa sáng · Esc/P: Tạm dừng
       </div>
 
       <div id="interact-prompt">E — Nạp ánh sáng (0/10)</div>
@@ -492,6 +523,10 @@
             </div>
             <input id="setting-sens" type="range" min="20" max="250" step="5" value="100" />
           </div>
+          <label class="setting-toggle" for="setting-colorblind">
+            <span>Bảng màu dễ phân biệt</span>
+            <input id="setting-colorblind" type="checkbox" />
+          </label>
           <button id="btn-settings-mute" class="modal-btn secondary" type="button">
             Tắt / Bật âm thanh
           </button>

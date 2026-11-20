@@ -200,4 +200,20 @@ export class GameAudio {
   playDrifterSteal(): void {
     this.playTone(740, 0.16, "triangle", 0.09, 0, 380);
   }
+
+  /** Phase 3: Refuel chime, lantern extinguish, and fuel drain warning */
+  playRefuel(): void {
+    this.playTone(440, 0.16, "sine", 0.11, 0, 587.33);
+    this.playTone(659.25, 0.24, "triangle", 0.09, 0.07, 783.99);
+  }
+
+  playLanternOut(): void {
+    this.playTone(349.23, 0.32, "triangle", 0.12, 0, 174.61);
+    this.playTone(220, 0.42, "sine", 0.09, 0.08, 130.81);
+  }
+
+  playFuelWarn(): void {
+    this.playTone(620, 0.09, "triangle", 0.07, 0, 520);
+    this.playTone(620, 0.1, "triangle", 0.07, 0.12, 520);
+  }
 }

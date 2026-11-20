@@ -8,7 +8,9 @@ import {
 import { createGameWorld, stepGameWorld } from "../dist-cli/core/game.js";
 import {
   applyPauseResumeAction,
+  computeLanternVisualState,
   computeOffscreenLanternArrow,
+  formatColorblindAlert,
 } from "../src/web/visualHelpers.js";
 
 function createFakeStorage() {
@@ -23,19 +25,31 @@ function createFakeStorage() {
   };
 }
 
-test("loadSettings returns defaults and saves/restores volume and mouseSensitivity cleanly", () => {
+test("loadSettings returns defaults and saves/restores volume, mouseSensitivity, and colorblindMode cleanly", () => {
   const storage = createFakeStorage();
-  assert.deepEqual(loadSettings(storage), DEFAULT_SETTINGS);
+  assert.deepEqual(loadSettings(storage), {
+    ...DEFAULT_SETTINGS,
+    colorblindMode: false,
+  });
 
-  const saved = saveSettings({ volume: 0.35, mouseSensitivity: 1.8 }, storage);
-  assert.deepEqual(saved, { volume: 0.35, mouseSensitivity: 1.8 });
-  assert.deepEqual(loadSettings(storage), { volume: 0.35, mouseSensitivity: 1.8 });
+  const saved = saveSettings({ volume: 0.35, mouseSensitivity: 1.8, colorblindMode: true }, storage);
+  assert.deepEqual(saved, { volume: 0.35, mouseSensitivity: 1.8, colorblindMode: true });
+  assert.deepEqual(loadSettings(storage), {
+    volume: 0.35,
+    mouseSensitivity: 1.8,
+    colorblindMode: true,
+  });
+
+  const toggledOff = saveSettings({ volume: 0.35, mouseSensitivity: 1.8, colorblindMode: false }, storage);
+  assert.equal(toggledOff.colorblindMode, false);
+  assert.equal(loadSettings(storage).colorblindMode, false);
 
   // Clamping & corrupt JSON fallback
   saveSettings({ volume: 5, mouseSensitivity: 0.01 }, storage);
   const clamped = loadSettings(storage);
   assert.equal(clamped.volume, 1);
   assert.equal(clamped.mouseSensitivity, 0.2);
+  assert.equal(clamped.colorblindMode, false);
 
   storage.setItem("dao-den-long:settings:v1", "{bad-json");
   assert.deepEqual(loadSettings(storage), DEFAULT_SETTINGS);
@@ -99,4 +113,56 @@ test("applyPauseResumeAction zeroes stale inputs and surfaces game_over without 
   assert.equal(applyPauseResumeAction(world2, "pause", 0, stepGameWorld, (e) => evs2.push(...e)), "paused");
   assert.equal(applyPauseResumeAction(world2, "resume", 0, stepGameWorld, (e) => evs2.push(...e)), "playing");
   assert.equal(applyPauseResumeAction(world2, "pause", 0, stepGameWorld, (e) => evs2.push(...e)), "paused");
+});
+
+test("computeLanternVisualState and formatColorblindAlert reflect squash/tears, 1Hz blink <30, safe ring at 30, and warning prefix", () => {
+  const unlit = computeLanternVisualState({
+    lit: false,
+    fuel: 0,
+    fuelMax: 100,
+    lowFuelThreshold: 30,
+    nowSec: 0.2,
+  });
+  assert.equal(unlit.scaleY, 0.8);
+  assert.equal(unlit.tearsVisible, true);
+  assert.equal(unlit.fuelBarVisible, false);
+  assert.equal(unlit.safeRingVisible, false);
+  assert.equal(unlit.blinking, false);
+
+  const safeBoundary = computeLanternVisualState({
+    lit: true,
+    fuel: 30,
+    fuelMax: 100,
+    lowFuelThreshold: 30,
+    nowSec: 0.7,
+  });
+  assert.equal(safeBoundary.scaleY, 1);
+  assert.equal(safeBoundary.tearsVisible, false);
+  assert.equal(safeBoundary.fuelBarVisible, true);
+  assert.equal(safeBoundary.safeRingVisible, true);
+  assert.equal(safeBoundary.blinking, false);
+  assert.equal(safeBoundary.fuelRatio, 0.3);
+
+  const lowHi = computeLanternVisualState({
+    lit: true,
+    fuel: 29.9,
+    fuelMax: 100,
+    lowFuelThreshold: 30,
+    nowSec: 0.2,
+  });
+  const lowLo = computeLanternVisualState({
+    lit: true,
+    fuel: 29.9,
+    fuelMax: 100,
+    lowFuelThreshold: 30,
+    nowSec: 0.7,
+  });
+  assert.equal(lowHi.safeRingVisible, false);
+  assert.equal(lowHi.blinking, true);
+  assert.equal(lowHi.blinkOn, true);
+  assert.equal(lowLo.blinkOn, false);
+
+  assert.equal(formatColorblindAlert("Đèn L1 cạn dầu!", false), "Đèn L1 cạn dầu!");
+  assert.equal(formatColorblindAlert("Đèn L1 cạn dầu!", true), "⚠ Đèn L1 cạn dầu!");
+  assert.equal(formatColorblindAlert("⚠ Đã cảnh báo", true), "⚠ Đã cảnh báo");
 });

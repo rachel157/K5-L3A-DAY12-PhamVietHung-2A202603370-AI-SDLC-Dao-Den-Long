@@ -2,11 +2,16 @@ import * as THREE from "three";
 import { DEFAULT_TUNING } from "../core/contract.js";
 import { getNightMapConfig } from "../core/maps.js";
 import type { GameWorld, NightNumber } from "../core/types.js";
-import { applyShadeFacing } from "./visualHelpers.js";
+import { applyShadeFacing, computeLanternVisualState } from "./visualHelpers.js";
 
 interface LanternVisual {
   group: THREE.Group;
+  coreGroup: THREE.Group;
   coreMat: THREE.MeshStandardMaterial;
+  tearsGroup: THREE.Group;
+  fuelBarGroup: THREE.Group;
+  fuelFill: THREE.Mesh;
+  fuelFillMat: THREE.MeshBasicMaterial;
   light: THREE.PointLight;
   safeRing: THREE.Mesh;
 }
@@ -42,6 +47,7 @@ export const PALETTE = {
   moteHalo: 0xffe58a,
   shadeBody: 0x120a1a,
   shadeEyes: 0x7a3cff,
+  shadeColorblindCyan: 0x00b3ff,
   shadeStunned: 0x3a3450,
   drifterWisp: 0x8fa3b8,
   charmRed: 0xc8102e,
@@ -102,6 +108,11 @@ export class WorldSceneRenderer {
   });
   private readonly shadeEyeChaseMat = new THREE.MeshBasicMaterial({ color: PALETTE.shadeEyes });
   private readonly shadeEyeStunMat = new THREE.MeshBasicMaterial({ color: 0x9bd4ff });
+  private readonly shadeRimGeo = new THREE.TorusGeometry(0.64, 0.045, 6, 20);
+  private readonly shadeRimColorblindMat = new THREE.MeshBasicMaterial({
+    color: PALETTE.shadeColorblindCyan,
+  });
+  private colorblindMode = false;
 
   private readonly drifterBodyGeo = new THREE.ConeGeometry(0.32, 1.15, 8);
   private readonly drifterRibbonGeo = new THREE.TorusGeometry(0.38, 0.05, 6, 16);
@@ -227,7 +238,7 @@ export class WorldSceneRenderer {
     this.mayGroup.add(playerLight);
 
     const orbGeo = new THREE.SphereGeometry(0.075, 8, 8);
-    for (let i = 0; i < DEFAULT_TUNING.carry_capacity; i++) {
+    for (let i = 0; i < DEFAULT_TUNING.capacity_max; i++) {
       const orb = new THREE.Mesh(orbGeo, this.moteRandomMat);
       orb.visible = false;
       this.mayGroup.add(orb);
@@ -236,6 +247,19 @@ export class WorldSceneRenderer {
 
     this.scene.add(this.mayGroup);
     return { smallLantern, playerLight };
+  }
+
+  setColorblindMode(enabled: boolean): void {
+    this.colorblindMode = enabled;
+    const eyeHex = enabled ? PALETTE.shadeColorblindCyan : PALETTE.shadeEyes;
+    const bodyEmissiveHex = enabled ? 0x004e7a : 0x260d3d;
+    this.shadeEyeChaseMat.color.setHex(eyeHex);
+    this.shadeMatNormal.emissive.setHex(bodyEmissiveHex);
+    this.shadeMatSpawning.emissive.setHex(eyeHex);
+    for (const g of this.shadeMeshes.values()) {
+      const rim = g.userData.rim as THREE.Mesh | undefined;
+      if (rim) rim.visible = enabled;
+    }
   }
 
   private disposeSubtree(root: THREE.Object3D): void {
@@ -434,7 +458,10 @@ export class WorldSceneRenderer {
     const baseGeo = new THREE.CylinderGeometry(0.65, 0.85, 0.55, 12);
     const pillarGeo = new THREE.CylinderGeometry(0.14, 0.2, 2.1, 10);
     const coreGeo = new THREE.OctahedronGeometry(0.55, 1);
+    const tearGeo = new THREE.BoxGeometry(0.1, 0.72, 0.08);
     const roofGeo = new THREE.ConeGeometry(0.85, 0.45, 8);
+    const fuelBgGeo = new THREE.BoxGeometry(1.18, 0.16, 0.05);
+    const fuelFillGeo = new THREE.BoxGeometry(1.06, 0.1, 0.07);
     const ringGeo = new THREE.RingGeometry(
       DEFAULT_TUNING.safe_radius - 0.12,
       DEFAULT_TUNING.safe_radius,
@@ -443,7 +470,9 @@ export class WorldSceneRenderer {
 
     const baseMat = new THREE.MeshStandardMaterial({ color: 0x393d54, roughness: 0.9 });
     const pillarMat = new THREE.MeshStandardMaterial({ color: PALETTE.bridge, roughness: 0.85 });
+    const tearMat = new THREE.MeshBasicMaterial({ color: 0x15111f });
     const roofMat = new THREE.MeshStandardMaterial({ color: 0x2a2433, roughness: 0.85 });
+    const fuelBgMat = new THREE.MeshBasicMaterial({ color: 0x0b0e1a });
     const safeRingMat = new THREE.MeshBasicMaterial({
       color: PALETTE.lanternWarm,
       transparent: true,
@@ -465,10 +494,34 @@ export class WorldSceneRenderer {
         emissiveIntensity: 0.35,
         roughness: 0.3,
       });
+      const coreGroup = new THREE.Group();
+      coreGroup.position.y = 2.65;
       const core = new THREE.Mesh(coreGeo, coreMat);
-      core.position.y = 2.65;
+      coreGroup.add(core);
+
+      // Visible dark paper-tear slits on unlit lanterns (accessibility shape cue)
+      const tearsGroup = new THREE.Group();
+      for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+        const slit = new THREE.Mesh(tearGeo, tearMat);
+        slit.position.set(Math.sin(yaw) * 0.44, 0, Math.cos(yaw) * 0.44);
+        slit.rotation.set(0, yaw, yaw % Math.PI === 0 ? 0.38 : -0.38);
+        tearsGroup.add(slit);
+      }
+      coreGroup.add(tearsGroup);
+
       const roof = new THREE.Mesh(roofGeo, roofMat);
       roof.position.y = 3.25;
+
+      // Floating 3D fuel bar on lit lanterns
+      const fuelBarGroup = new THREE.Group();
+      fuelBarGroup.position.y = 3.92;
+      fuelBarGroup.visible = false;
+      const fuelBg = new THREE.Mesh(fuelBgGeo, fuelBgMat);
+      const fuelFillMat = new THREE.MeshBasicMaterial({ color: PALETTE.lanternWarm });
+      const fuelFill = new THREE.Mesh(fuelFillGeo, fuelFillMat);
+      fuelFill.position.z = 0.01;
+      fuelBarGroup.add(fuelBg, fuelFill);
+
       const light = new THREE.PointLight(PALETTE.lanternWarm, 0, 19, 1.4);
       light.position.y = 2.65;
       const safeRing = new THREE.Mesh(ringGeo, safeRingMat);
@@ -476,9 +529,19 @@ export class WorldSceneRenderer {
       safeRing.position.y = 0.04;
       safeRing.visible = false;
 
-      group.add(base, pillar, core, roof, light, safeRing);
+      group.add(base, pillar, coreGroup, roof, fuelBarGroup, light, safeRing);
       this.lanternGroup.add(group);
-      this.lanternVisuals.set(lantern.id, { group, coreMat, light, safeRing });
+      this.lanternVisuals.set(lantern.id, {
+        group,
+        coreGroup,
+        coreMat,
+        tearsGroup,
+        fuelBarGroup,
+        fuelFill,
+        fuelFillMat,
+        light,
+        safeRing,
+      });
     }
   }
 
@@ -519,7 +582,7 @@ export class WorldSceneRenderer {
     this.pulseWaves.push({ mesh, mat, age: 0, maxAge: 0.5 });
   }
 
-  sync(world: GameWorld, nowSec: number, dtFrame: number): void {
+  sync(world: GameWorld, nowSec: number, dtFrame: number, cameraPos?: THREE.Vector3): void {
     // Mây + hanging lantern + orbiting motes
     this.mayGroup.position.set(world.player.pos[0], world.player.pos[1], world.player.pos[2]);
     this.mayGroup.rotation.y = Math.atan2(world.player.facing[0], world.player.facing[1]);
@@ -547,25 +610,70 @@ export class WorldSceneRenderer {
       const vis = this.lanternVisuals.get(lantern.id);
       if (!vis) continue;
       vis.group.position.set(lantern.pos[0], lantern.pos[1], lantern.pos[2]);
+
+      const fuelVal = lantern.lit ? lantern.fuelSixtieths / 60 : 0;
+      const visState = computeLanternVisualState({
+        lit: lantern.lit,
+        fuel: fuelVal,
+        fuelMax: world.tuning.fuel_max,
+        lowFuelThreshold: world.tuning.low_fuel_threshold,
+        nowSec,
+      });
+
+      vis.coreGroup.scale.set(lantern.lit ? 1 : 1.06, visState.scaleY, lantern.lit ? 1 : 1.06);
+      vis.tearsGroup.visible = visState.tearsVisible;
+      vis.fuelBarGroup.visible = visState.fuelBarVisible;
+      vis.safeRing.visible = visState.safeRingVisible;
+
+      if (visState.fuelBarVisible) {
+        if (cameraPos) {
+          vis.fuelBarGroup.rotation.y = Math.atan2(
+            cameraPos.x - lantern.pos[0],
+            cameraPos.z - lantern.pos[2]
+          );
+        }
+        const clampedRatio = Math.max(0.001, visState.fuelRatio);
+        vis.fuelFill.scale.x = clampedRatio;
+        vis.fuelFill.position.x = -0.53 * (1 - clampedRatio);
+        if (visState.blinking) {
+          vis.fuelFillMat.color.setHex(
+            this.colorblindMode
+              ? visState.blinkOn
+                ? 0xffffff
+                : 0x5f6b85
+              : visState.blinkOn
+                ? 0xff5a5f
+                : 0x5c1a24
+          );
+        } else {
+          vis.fuelFillMat.color.setHex(0x7be3b5);
+        }
+      }
+
       if (lantern.lit) {
-        vis.coreMat.color.setHex(PALETTE.lanternGlow);
-        vis.coreMat.emissive.setHex(PALETTE.lanternWarm);
-        vis.coreMat.emissiveIntensity = 1.65 + Math.sin(nowSec * 3.0) * 0.15;
-        vis.light.intensity = 18;
-        vis.safeRing.visible = true;
+        if (visState.blinking) {
+          vis.coreMat.color.setHex(visState.blinkOn ? PALETTE.lanternGlow : 0xb36b4a);
+          vis.coreMat.emissive.setHex(PALETTE.lanternWarm);
+          vis.coreMat.emissiveIntensity = visState.blinkOn ? 1.55 : 0.3;
+          vis.light.intensity = visState.blinkOn ? 15 : 4;
+        } else {
+          vis.coreMat.color.setHex(PALETTE.lanternGlow);
+          vis.coreMat.emissive.setHex(PALETTE.lanternWarm);
+          vis.coreMat.emissiveIntensity = 1.65 + Math.sin(nowSec * 3.0) * 0.15;
+          vis.light.intensity = 18;
+        }
       } else if (lantern.deposited > 0) {
-        const frac = lantern.deposited / world.tuning.lantern_cost;
+        const cost = lantern.everLit ? world.tuning.relight_cost : world.tuning.lantern_cost;
+        const frac = lantern.deposited / Math.max(1, cost);
         vis.coreMat.color.setHex(0xb89a70);
         vis.coreMat.emissive.setHex(PALETTE.lanternWarm);
         vis.coreMat.emissiveIntensity = 0.4 + frac * 0.55;
         vis.light.intensity = 3.2 * frac;
-        vis.safeRing.visible = false;
       } else {
         vis.coreMat.color.setHex(PALETTE.lanternUnlit);
         vis.coreMat.emissive.setHex(0x261d3a);
         vis.coreMat.emissiveIntensity = 0.3;
         vis.light.intensity = 0;
-        vis.safeRing.visible = false;
       }
     }
 
@@ -624,18 +732,30 @@ export class WorldSceneRenderer {
         leftEye.position.set(-0.14, 1.05, 0.32);
         const rightEye = new THREE.Mesh(this.shadeEyeGeo, this.shadeEyeChaseMat);
         rightEye.position.set(0.14, 1.05, 0.32);
-        g.add(body, leftEye, rightEye);
-        g.userData = { body, leftEye, rightEye };
+        const rim = new THREE.Mesh(this.shadeRimGeo, this.shadeRimColorblindMat);
+        rim.rotation.x = Math.PI / 2;
+        rim.position.y = 0.72;
+        rim.visible = this.colorblindMode;
+        g.add(body, leftEye, rightEye, rim);
+        g.userData = { body, leftEye, rightEye, rim };
         this.shadeMeshes.set(shade.id, g);
         this.scene.add(g);
       }
       g.position.set(shade.pos[0], shade.pos[1] - 0.8, shade.pos[2]);
-      applyShadeFacing(g, shade.pos, world.player.pos, shade.state === "stunned", nowSec);
-      const { body, leftEye, rightEye } = g.userData as {
+      const drainTarget =
+        shade.state === "drain" && shade.targetLanternId
+          ? world.lanterns.find((l) => l.id === shade.targetLanternId)
+          : undefined;
+      const faceTarget = drainTarget ? drainTarget.pos : world.player.pos;
+      applyShadeFacing(g, shade.pos, faceTarget, shade.state === "stunned", nowSec);
+      const { body, leftEye, rightEye, rim } = g.userData as {
         body: THREE.Mesh;
         leftEye: THREE.Mesh;
         rightEye: THREE.Mesh;
+        rim: THREE.Mesh;
       };
+      rim.visible = this.colorblindMode;
+      body.scale.y = shade.state === "drain" ? 1 + Math.sin(nowSec * 10) * 0.08 : 1;
       if (shade.state === "stunned") {
         body.material = this.shadeMatStunned;
         leftEye.material = this.shadeEyeStunMat;
