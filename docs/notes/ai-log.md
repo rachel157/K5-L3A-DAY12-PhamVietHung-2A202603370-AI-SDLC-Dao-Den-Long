@@ -82,6 +82,18 @@
 
 ---
 
-## Phase 4 …
+## Phase 4 (TICKET-04 — "Bình minh: phát hành v1.0.0", Contract v1.3)
 
-*Sẽ ghi bổ sung khi triển khai Ticket-04.*
+- **Công cụ AI:** Google Antigravity (thiết kế + TDD 5 task + chạy thực tế Chrome WebGL benchmark, soak test 10 Đêm, chụp screenshot thật & kiểm chứng clean-clone).
+- **Công việc đã giao AI:**
+  1. Nâng cấp `game.contract.json` (`v1.3`) thêm `bench_cmd`, `soak_cmd`, `run_cmd`; tạo `createBenchWorld`/`stepBenchWorld` (`200` Bóng Mực `wander` + `100` đom đóm + `L1..L3` `fuel=100`), `src/core/benchMetrics.ts` và `src/cli/soak.ts`.
+  2. Xây dựng Bảng xếp hạng cục bộ `src/core/leaderboard.ts`, local server `src/cli/run.ts` (`--export-leaderboard`, lưu đĩa `~/.dao-den-long/leaderboard.json`) và `src/web/leaderboardClient.ts`.
+  3. Tạo `src/cli/bench.ts` & chế độ `?bench=1` trong `src/web/main.ts` (quỹ đạo camera tròn `R=30, Y=15`, `15s/vòng`, warm-up `3s`), chạy thật 30s trên Chrome WebGL ghi `bench.json`.
+  4. Hoàn thiện Trợ năng Phase 4 (đổi phím 9 hành động + báo trùng + khôi phục mặc định, phụ đề `#subtitle-box` + mũi tên Bóng Mực `#shade-arrow`, giảm chuyển động `reduceMotion`, cỡ chữ tối thiểu `18px` + `×1.25`) và UI Bảng xếp hạng.
+  5. Chụp screenshot thật `1280×720` (`docs/demo/`), viết `LICENSE`, `CREDITS.md`, `CHANGELOG.md`, `README.md`, `docs/notes/retro.md`, `docs/proof/phase-4/README.md` và kiểm chứng clean-clone.
+- **Lỗi AI / sự cố kỹ thuật phát hiện & cách xử lý:**
+  - *Lỗi import tên hàm PRNG trong `src/cli/soak.ts`:* Gõ nhầm `createPrng` thay vì `createSeededRng` (`src/core/prng.ts`) -> Trình biên dịch `tsc` phát hiện ngay, sửa lại và kiểm tra `npm test` xanh toàn bộ.
+  - *Đảm bảo cỡ chữ `>= 18px` không phá vỡ bố cục `1280×720`:* Dùng CSS `--font-scale` (`1` mặc định, `1.25` khi bật Chữ lớn) kết hợp unit test regex tự động quét mọi `font-size` trong `index.html`.
+- **Chiến lược tiết kiệm token:**
+  - Không đọc lại toàn bộ file lớn đã biết, dùng `node:test` thuần và tận dụng Chrome có sẵn thay vì cài Playwright/Electron nặng.
+- **Ước tính token/chi phí Phase 4:** ~160k–240k tokens (tổng dự án 4 phase ~580k–880k tokens).

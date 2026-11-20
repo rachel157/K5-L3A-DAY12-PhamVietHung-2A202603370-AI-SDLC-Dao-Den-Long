@@ -1,15 +1,18 @@
-# Credits & Attributions
+# Credits — Đảo Đèn Lồng (`v1.0.0`)
 
-## Trạng thái hiện tại (Phase 2 — "Ba hòn đảo")
+## Tác giả & Mã nguồn
+- **Sinh viên thực hiện:** Phạm Việt Hùng (`2A202603370`) — thiết kế gameplay, kiểm thử, kiểm duyệt và điều phối quy trình AI-SDLC qua 4 phase.
 
-Toàn bộ đồ họa 3D và âm thanh trong game được tạo bằng mã nguồn thủ công (procedural Three.js geometries/materials và Web Audio API), **không sử dụng asset 3D, ảnh hay file âm thanh tải từ bên ngoài**:
-- **Mô hình 3D thủ công (`src/web/worldScene.ts`):** Mây (áo kem, khăn đỏ, nón lá treo đèn lồng nhỏ), 5–7 Đèn Lồng Lớn, Đom đóm, Bóng Mực, Gió Lạc, Bùa Gió, địa hình Đảo Bến (`40m`), Đảo Cau (2 đảo + cầu tre + 2 bục nhảy), Đảo Chuông (3 tầng + 2 dốc + bục nhảy + Tháp Chuông + vệt gió mạnh).
-- **Âm thanh thủ công (`src/web/audio.ts`):** Nhạc nền đêm ngũ cung và 10+ SFX tổng hợp qua Web Audio API.
+## Engine, Thư viện & Công cụ Nền tảng
+- **Three.js (`^0.187.0`):** Render 3D WebGL (MIT License).
+- **Vite (`^8.3.8`) & TypeScript (`^7.0.2`):** Build & type-checking đa nền tảng.
+- **Node.js (`^20.19.0 || >=22.12.0`):** Chạy mô phỏng headless tất định, `node:test` runner, benchmark runner, soak runner và local server.
 
-## Thư viện & Công cụ
+## Tài nguyên Đồ họa & Âm thanh (100% Procedural)
+- **Mô hình 3D (`src/web/worldScene.ts`):** Toàn bộ nhân vật Mây (áo choàng, khăn đỏ, nón lá treo đèn), Bóng Mực, Gió Lạc, Đèn Lồng Lớn (kèm thanh dầu & vết rách giấy), Bùa Gió, 3 hòn đảo, cầu tre, bục nhảy, Tháp Chuông và biển mây được dựng hoàn toàn bằng hình học cơ bản (`BoxGeometry`, `CylinderGeometry`, `ConeGeometry`, `SphereGeometry`, `TorusGeometry`, `ExtrudeGeometry`) trong mã nguồn — không sử dụng model ngoài.
+- **Âm thanh (`src/web/audio.ts`):** Nhạc nền ngũ cung đêm và toàn bộ SFX (nhặt đom đóm, nạp/châm dầu, thắp đèn, tắt đèn, cảnh báo hút dầu, tỏa sáng, nhảy, lướt, Bóng Mực xuất hiện, Gió Lạc, thắng/thua) được tổng hợp thời gian thực bằng Web Audio API — không sử dụng file audio ngoài.
+- **Phông chữ:** System UI font stack mặc định của hệ điều hành (`system-ui, -apple-system, Segoe UI, sans-serif`).
 
-- **Three.js** — MIT License (render 3D WebGL)
-- **Vite** — MIT License (bundler & preview server)
-- **TypeScript** — Apache-2.0 License
-- **Node.js** — MIT License (runtime headless CLI & `node:test`)
-- **Google Antigravity** — AI coding assistant hỗ trợ thiết kế, lập kế hoạch, triển khai TDD và rà soát độc lập qua các phase.
+## Công cụ AI hỗ trợ phát triển
+- **Google Antigravity (Gemini 4 Hydrogen):** Hỗ trợ phân tích yêu cầu, viết spec/ADR/plan theo quy trình TDD, sinh mã TypeScript/Three.js/HTML/CSS, rà soát thiết kế (`builder-check`) và đánh giá mã nguồn độc lập (`Final Code Review`).
+- **AI Harness trong repo:** `AGENTS.md`, `.agents/skills/verify-phase/SKILL.md`, `.agents/hooks.json` & `.agents/scripts/stop-test-gate.mjs`.

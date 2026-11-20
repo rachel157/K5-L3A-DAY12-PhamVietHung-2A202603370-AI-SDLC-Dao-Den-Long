@@ -6,13 +6,15 @@ Game 3D + chế độ headless deterministic (`TypeScript` + `Vite` + `Three.js`
 - `npm install` — install dependencies
 - `npm run build` — compile CLI (`dist-cli/`) and web (`dist/`)
 - `npm test` — compile CLI/core/settings and run `node --test`
-- `npm run headless` — run headless CLI (`node dist-cli/cli/headless.js`, Contract `v1.2`, `--night 1|2|3`)
-- `npm run dev` / `npm run preview` — run 3D web app locally
+- `npm run headless` — run headless CLI (`node dist-cli/cli/headless.js`, Contract `v1.3`, `--night 1|2|3`)
+- `npm run dev` / `node dist-cli/cli/run.js` — run 3D web app locally (with disk leaderboard)
+- `node dist-cli/cli/bench.js --seed 42 --duration 30 --out bench.json` — 1280×720 WebGL benchmark
+- `node dist-cli/cli/soak.js --seed 7 --nights 10 --out soak.json` — 10-night headless soak test
 
 ## Architecture Boundaries
-- `src/core/`: **pure TypeScript only**. Never import `three`, access `window`/`document`/`process`, or call `Math.random()` / `Date.now()`. Use seeded PRNG (`src/core/prng.ts`). Includes `types.ts`, `prng.ts`, `contract.ts` (`v1.2`), `maps.ts` (`240/270/300s` terrain/ramps/pads), and `game.ts` (12-step tick loop with integer `1/60` fuel, `drain`, `relight`, `capacity`, `dawn_survived`).
-- `src/web/`: Three.js 3D world (`worldScene.ts`, `main.ts`), Web Audio (`audio.ts`), `localStorage` settings (`settings.ts` incl. `colorblindMode`), and 7-zone HUD (`ui.ts`). Creative flourishes stay in `src/web/` so headless outputs never change.
-- `src/cli/`: Node headless runner (`headless.ts`) validating `--night 1|2|3` and v1.2 scenario/input schemas.
+- `src/core/`: **pure TypeScript only**. Never import `three`, access `window`/`document`/`process`, or call `Math.random()` / `Date.now()`. Use seeded PRNG (`src/core/prng.ts`). Includes `types.ts`, `prng.ts`, `contract.ts` (`v1.3`), `maps.ts`, `game.ts` (+ `createBenchWorld`/`stepBenchWorld`), `benchMetrics.ts`, `leaderboard.ts`.
+- `src/web/`: Three.js 3D world (`worldScene.ts`, `main.ts` incl. `?bench=1`), Web Audio (`audio.ts`), `localStorage` settings (`settings.ts` incl. `keybinds`, `colorblindMode`, `reduceMotion`, `largeText`), `leaderboardClient.ts`, and HUD (`ui.ts`, `>= 18px`).
+- `src/cli/`: Node runners (`headless.ts`, `bench.ts`, `soak.ts`, `run.ts`).
 - Relative imports in TS source must use `.js` extensions (`NodeNext` ESM + Vite compatible).
 
 ## Cross-Platform & Build Rules

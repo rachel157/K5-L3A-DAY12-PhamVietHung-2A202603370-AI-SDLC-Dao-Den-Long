@@ -4,6 +4,24 @@ Mọi thay đổi đáng chú ý qua các phase phát triển đều được gh
 
 ---
 
+## [1.3.0 / v1.0.0] — Phase 4 (`TICKET-04` · "Bình minh: phát hành v1.0.0" · `Contract v1.3` · Tag `phase-4`)
+
+### Added (Non-functional, Accessibility, Leaderboard & Release)
+- **Contract `v1.3` ([game.contract.json](game.contract.json)):** Bổ sung `bench_cmd` (`node dist-cli/cli/bench.js`), `soak_cmd` (`node dist-cli/cli/soak.js`), và `run_cmd` (`node dist-cli/cli/run.js`).
+- **Chế độ Benchmark `1280×720` (`src/cli/bench.ts`, `src/core/benchMetrics.ts`, `createBenchWorld`/`stepBenchWorld`):**
+  - Tự động khởi chạy cảnh WebGL Đêm 1 (`seed 42`, `200` Bóng Mực `wander`, `100` đom đóm, `L1..L3` sáng `fuel=100`, camera quay tròn `R=30, Y=15` ngược chiều kim đồng hồ `15s`/vòng, `3s` warm-up + `--duration` giây đo), xuất `bench.json` (`avg_fps`, `p1_low_fps`, `frame_ms_p95`, `frames`, `load_ms`, `peak_mem_mb`, `vsync_off`, `renderer`, `os`).
+- **Soak test (`src/cli/soak.ts`):** Chạy headless `10` Đêm liên tiếp (`Đêm 1 → 2 → 3`, `seed 7 + i`, input ngẫu nhiên theo seed), kiểm soát `crashes = 0` và rò rỉ bộ nhớ (`mem_end_mb <= 1.2 * mem_start_mb`), xuất `soak.json`.
+- **Bảng xếp hạng cục bộ (`src/core/leaderboard.ts`, `src/cli/run.ts`, `src/web/leaderboardClient.ts`):**
+  - Cho phép nhập tên (`3–12` ký tự `[A-Za-z0-9_]` hoặc chữ cái tiếng Việt) sau thắng Đêm 3 (Bình Minh) hoặc thua ở bất kỳ Đêm nào; sắp xếp Top 10 theo `score` giảm dần (bằng điểm thì `achieved_at` sớm hơn đứng trên).
+  - Lưu đĩa cục bộ qua `run.js` (`/api/leaderboard` → `~/.dao-den-long/leaderboard.json`) kèm fallback `localStorage`, xem từ Menu chính và xuất qua `node dist-cli/cli/run.js --export-leaderboard out.json`.
+- **Trợ năng đầy đủ (`src/web/settings.ts`, `index.html`, `src/web/ui.ts`, `src/web/main.ts`):**
+  - Đổi phím cho tất cả 9 hành động, phát hiện & báo trùng phím, nút **"Khôi phục mặc định"**.
+  - Phụ đề hình ảnh (`#subtitle-box`) + mũi tên mép màn hình chỉ hướng Bóng Mực khi xuất hiện (`#shade-arrow`), gió sắp thổi, `10s` cuối, đèn `< 30` dầu.
+  - Tùy chọn **"Giảm chuyển động"** (`reduceMotion`) tắt rung/lerp giật camera và hiệu ứng nhấp nháy `12 Hz`; cỡ chữ UI tối thiểu `18px` ở `1280×720` kèm tùy chọn **"Chữ lớn (×1.25)"** (`largeText`).
+- **Tài liệu phát hành:** Thêm [LICENSE](LICENSE) (MIT), [CREDITS.md](CREDITS.md), ảnh chụp màn hình `docs/demo/`, bản tổng kết [docs/notes/retro.md](docs/notes/retro.md) và bằng chứng [docs/proof/phase-4/README.md](docs/proof/phase-4/README.md).
+
+---
+
 ## [1.2.0] — Phase 3 (`TICKET-03` · "Đèn cạn dầu" · `Contract v1.2` · Tag `phase-3`)
 
 > Quyết định thiết kế kiến trúc: xem [ADR-001](docs/notes/adr-001-lantern-fuel-and-win-condition.md) và bảng truy vết `P3-01..P3-08` trong [docs/notes/assumptions.md](docs/notes/assumptions.md).
