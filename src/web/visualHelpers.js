@@ -69,3 +69,28 @@ export function computeOffscreenLanternArrow(
     angleDeg: (Math.atan2(ny, nx) * 180) / Math.PI,
   };
 }
+
+/**
+ * Applies pause/resume transitions on `world` with zeroed movement/action inputs,
+ * forwarding all emitted events to `onEvents` so terminal transitions never softlock.
+ */
+export function applyPauseResumeAction(world, action, camYawDeg, stepWorld, onEvents) {
+  const patch = {
+    move: [0, 0],
+    cam_yaw_deg: camYawDeg,
+    jump: false,
+    dash: false,
+    interact: false,
+    pulse: false,
+    pause: true,
+  };
+  if (action === "pause" && world.state === "playing") {
+    onEvents(stepWorld(world, patch));
+    if (world.state === "paused") {
+      onEvents(stepWorld(world, { ...patch, pause: false }));
+    }
+  } else if (action === "resume" && world.state === "paused") {
+    onEvents(stepWorld(world, patch));
+  }
+  return world.state;
+}

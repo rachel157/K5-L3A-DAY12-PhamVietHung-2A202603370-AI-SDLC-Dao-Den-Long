@@ -428,10 +428,7 @@ function parseScenarioFile(filePath: string, night: NightNumber): ScenarioConfig
   }
 
   if (raw.time_left_s !== undefined) {
-    if (typeof raw.time_left_s !== "number" || !Number.isFinite(raw.time_left_s)) {
-      throw new ContractFileError("scenario.time_left_s must be a finite number");
-    }
-    scenario.time_left_s = raw.time_left_s;
+    scenario.time_left_s = assertNonNegFinite(raw.time_left_s, "scenario.time_left_s");
   }
 
   if (raw.motes !== undefined) scenario.motes = parseScenarioMotes(raw.motes);

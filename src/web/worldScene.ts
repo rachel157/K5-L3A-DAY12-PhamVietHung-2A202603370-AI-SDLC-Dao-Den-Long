@@ -56,6 +56,7 @@ export class WorldSceneRenderer {
   private readonly fog = new THREE.FogExp2(PALETTE.skyNight, 0.02);
   private readonly skyNightColor = new THREE.Color(PALETTE.skyNight);
   private readonly skyDawnColor = new THREE.Color(PALETTE.skyDawn);
+  private readonly skyScratchColor = new THREE.Color(PALETTE.skyNight);
 
   private readonly envGroup = new THREE.Group();
   private readonly lanternGroup = new THREE.Group();
@@ -237,27 +238,51 @@ export class WorldSceneRenderer {
     return { smallLantern, playerLight };
   }
 
-  private clearGroup(group: THREE.Group): void {
+  private disposeSubtree(root: THREE.Object3D): void {
+    const geos = new Set<THREE.BufferGeometry>();
+    const mats = new Set<THREE.Material>();
+    root.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        geos.add(obj.geometry);
+        if (Array.isArray(obj.material)) {
+          for (const m of obj.material) mats.add(m);
+        } else {
+          mats.add(obj.material);
+        }
+      }
+    });
+    for (const g of geos) g.dispose();
+    for (const m of mats) m.dispose();
+  }
+
+  private clearGroup(group: THREE.Group, dispose = false): void {
+    if (dispose) this.disposeSubtree(group);
     while (group.children.length > 0) {
       group.remove(group.children[0]!);
     }
   }
 
-  private clearDynamicEntityMap(map: Map<string, THREE.Group>): void {
-    for (const mesh of map.values()) this.scene.remove(mesh);
+  private clearDynamicEntityMap(map: Map<string, THREE.Group>, dispose = false): void {
+    for (const mesh of map.values()) {
+      if (dispose) this.disposeSubtree(mesh);
+      this.scene.remove(mesh);
+    }
     map.clear();
   }
 
   rebuildForWorld(world: GameWorld): void {
-    this.clearGroup(this.envGroup);
-    this.clearGroup(this.lanternGroup);
+    this.clearGroup(this.envGroup, true);
+    this.clearGroup(this.lanternGroup, true);
     this.lanternVisuals.clear();
     this.clearDynamicEntityMap(this.moteMeshes);
     this.clearDynamicEntityMap(this.shadeMeshes);
     this.clearDynamicEntityMap(this.drifterMeshes);
-    this.clearDynamicEntityMap(this.charmMeshes);
+    this.clearDynamicEntityMap(this.charmMeshes, true);
 
-    for (const wave of this.pulseWaves) this.scene.remove(wave.mesh);
+    for (const wave of this.pulseWaves) {
+      this.scene.remove(wave.mesh);
+      wave.mat.dispose();
+    }
     this.pulseWaves.length = 0;
 
     this.buildTerrainForNight(world.night);
@@ -549,9 +574,13 @@ export class WorldSceneRenderer {
     this.hemi.intensity = 0.25 + 0.45 * brightT;
     this.moon.intensity = 0.35 + 0.3 * brightT;
     this.fog.density = 0.02 - brightT * 0.009;
-    const blended = this.skyNightColor.clone().lerp(this.skyDawnColor, brightT);
-    this.scene.background = blended;
-    this.fog.color.copy(blended);
+    this.skyScratchColor.copy(this.skyNightColor).lerp(this.skyDawnColor, brightT);
+    if (this.scene.background instanceof THREE.Color) {
+      this.scene.background.copy(this.skyScratchColor);
+    } else {
+      this.scene.background = this.skyScratchColor;
+    }
+    this.fog.color.copy(this.skyScratchColor);
 
     // Motes
     const activeMoteIds = new Set<string>();
@@ -697,6 +726,7 @@ export class WorldSceneRenderer {
       const frac = wave.age / wave.maxAge;
       if (frac >= 1) {
         this.scene.remove(wave.mesh);
+        wave.mat.dispose();
         this.pulseWaves.splice(i, 1);
       } else {
         const s = 1 + frac * (world.tuning.pulse_radius * 1.4);

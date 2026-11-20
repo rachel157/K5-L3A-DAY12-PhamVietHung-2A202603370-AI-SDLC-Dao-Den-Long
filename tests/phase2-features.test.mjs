@@ -176,7 +176,7 @@ test("Night 3 strong wind pushes player during gusts and jump pad reaches Tier 2
   );
 });
 
-test("lit lantern pushes inside shades out to >= 6m within 30 ticks without damage, and chase/wander hysteresis works", () => {
+test("lit lantern pushes inside shades out to >= 6m within 30 ticks without damage", () => {
   const lines = runHeadlessSimulation({
     seed: 1,
     night: 1,
@@ -197,6 +197,108 @@ test("lit lantern pushes inside shades out to >= 6m within 30 ticks without dama
   const snap31 = lines.find((l) => l.type === "snapshot" && l.tick === 31);
   const dist = Math.hypot(snap31.shades[0].pos[0], snap31.shades[0].pos[2] - 25);
   assert.ok(dist >= 5.99, `expected shade pushed out to >= 6m, got ${dist}`);
+});
+
+test("shade wander/chase 12m/18m hysteresis and dropped mote 480-tick expiry work", () => {
+  const lines = runHeadlessSimulation({
+    seed: 1,
+    night: 1,
+    scenario: {
+      player: { pos: [0, 0, 0], carried: 0, flames: 3 },
+      random_motes: false,
+      random_shades: false,
+      motes: [{ id: "M1", pos: [5, 0, 5], kind: "dropped", ttl_ticks: 2 }],
+      shades: [{ id: "S1", pos: [14, 0.8, 0], state: "chase" }],
+    },
+    frames: [
+      { tick: 0, move: [-1, 0] }, // move -X at 6m/s vs 4m/s chase -> crosses >18m after ~120 ticks
+    ],
+    maxTicks: 150,
+    snapshotEvery: 1,
+  });
+
+  // At tick 1 shade is at 14m (< 18m) so stays chase; once player runs past > 18m it switches back to wander
+  const snap1 = lines.find((l) => l.type === "snapshot" && l.tick === 1);
+  assert.equal(snap1.shades[0].state, "chase");
+  assert.equal(snap1.motes.length, 1);
+
+  const snap2 = lines.find((l) => l.type === "snapshot" && l.tick === 2);
+  assert.equal(snap2.motes.length, 0, "dropped mote expires when ttl hits 0");
+
+  const snap145 = lines.find((l) => l.type === "snapshot" && l.tick === 145);
+  assert.equal(snap145.shades[0].state, "wander", "shade drops chase once dist > 18m");
+});
+
+test("Night 3 cliff step-down triggers airborne fall instead of instant Y=0 snap", () => {
+  const lines = runHeadlessSimulation({
+    seed: 1,
+    night: 3,
+    scenario: {
+      player: { pos: [0, 6, -7.8], carried: 0, flames: 3 },
+      random_motes: false,
+      random_shades: false,
+      random_drifters: false,
+      wind_enabled: false,
+    },
+    frames: [{ tick: 0, move: [0, -1] }], // moves along -Z off Tier 2 edge onto Tier 0
+    maxTicks: 6,
+    snapshotEvery: 1,
+  });
+
+  const snap5 = lines.find((l) => l.type === "snapshot" && l.tick === 5);
+  assert.equal(snap5.player.grounded, false, "walking off 6m cliff must leave ground");
+  assert.ok(snap5.player.pos[1] > 4.5, `must fall smoothly under gravity, got Y=${snap5.player.pos[1]}`);
+});
+
+test("Night 3 shades block sideways 1.0m ramp cliffs and climb ramps smoothly onto Tier 1", () => {
+  const cos30 = Math.cos((30 * Math.PI) / 180);
+  const sin30 = 0.5;
+  // Ramp center at s=28 (gy=1.0), lateral outside at w=1.65 (gy=0.0)
+  const rampX = 28 * cos30;
+  const rampZ = 28 * sin30;
+  const sideX = 28 * cos30 - 1.65 * sin30;
+  const sideZ = 28 * sin30 + 1.65 * cos30;
+
+  const sideCliffLines = runHeadlessSimulation({
+    seed: 1,
+    night: 3,
+    scenario: {
+      player: { pos: [rampX, 1, rampZ], carried: 0, flames: 3, invuln_ticks: 90 },
+      random_motes: false,
+      random_shades: false,
+      random_drifters: false,
+      wind_enabled: false,
+      shades: [{ id: "S1", pos: [sideX, 0.8, sideZ], state: "chase" }],
+    },
+    maxTicks: 20,
+    snapshotEvery: 1,
+  });
+  const sideEnd = sideCliffLines.find((l) => l.type === "snapshot" && l.tick === 20);
+  assert.ok(
+    sideEnd.shades[0].pos[1] <= 0.85,
+    `shade must not step up 1.0m vertical ramp side, got center Y=${sideEnd.shades[0].pos[1]}`
+  );
+
+  // Climb from ramp foot R=31, 30 deg onto Tier 1 (Y=3, center Y=3.8) while chasing player on Tier 1 within 18m
+  const climbLines = runHeadlessSimulation({
+    seed: 1,
+    night: 3,
+    scenario: {
+      player: { pos: [21 * cos30, 3, 21 * sin30], carried: 0, flames: 3, invuln_ticks: 90 },
+      random_motes: false,
+      random_shades: false,
+      random_drifters: false,
+      wind_enabled: false,
+      shades: [{ id: "S1", pos: [31 * cos30, 0.8, 31 * sin30], state: "chase" }],
+    },
+    maxTicks: 140,
+    snapshotEvery: 1,
+  });
+  const climbEnd = climbLines.find((l) => l.type === "snapshot" && l.tick === 140);
+  assert.ok(
+    climbEnd.shades[0].pos[1] >= 3.79,
+    `shade climbing ramp should reach Tier 1 (center Y=3.8), got ${climbEnd.shades[0].pos[1]}`
+  );
 });
 
 test("Drifters (Gió Lạc) steal motes, flee -> removed, and drop stolen motes when pulsed", () => {
@@ -242,6 +344,67 @@ test("Drifters (Gió Lạc) steal motes, flee -> removed, and drop stolen motes 
   assert.equal(snap1.motes.filter((m) => m.kind === "dropped").length, 3);
   const snap122 = dropLines.find((l) => l.type === "snapshot" && l.tick === 122);
   assert.equal(snap122.drifters[0].state, "removed");
+
+  // Drifter over Night 2 true void pulsed from Island A edge drops motes onto reachable Island A ground (Y=0)
+  const voidDropLines = runHeadlessSimulation({
+    seed: 3,
+    night: 2,
+    scenario: {
+      player: { pos: [26, 0, 10], carried: 3, flames: 3 },
+      random_motes: false,
+      random_shades: false,
+      random_drifters: false,
+      drifters: [{ id: "D1", pos: [28.5, 1.6, 10], state: "flee", stolen: 3, state_ticks_left: 200 }],
+    },
+    frames: [{ tick: 0, pulse: true }],
+    maxTicks: 5,
+    snapshotEvery: 1,
+  });
+  const snapVoid = voidDropLines.find((l) => l.type === "snapshot" && l.tick === 1);
+  assert.equal(snapVoid.motes.length, 3);
+  for (const m of snapVoid.motes) {
+    assert.equal(m.pos[1], 0, `dropped void mote must snap to ground Y=0, got ${m.pos}`);
+    assert.ok(Math.hypot(m.pos[0], m.pos[2]) <= 28.001, `mote must land on Island A, got ${m.pos}`);
+  }
+
+  // Pulse turns chase drifter to flee & scheduled tick 1200 spawns Drifter on Night 2
+  const schedLines = runHeadlessSimulation({
+    seed: 1,
+    night: 2,
+    scenario: {
+      player: { pos: [0, 0, 0], carried: 5, flames: 3 },
+      random_motes: false,
+      random_shades: false,
+      drifters: [{ id: "D1", pos: [0, 1.6, 2], state: "chase" }],
+    },
+    frames: [{ tick: 0, pulse: true }],
+    maxTicks: 1202,
+    snapshotEvery: 1200,
+  });
+  const snap1200 = schedLines.find((l) => l.type === "snapshot" && l.tick === 1200);
+  assert.ok(snap1200.drifters.length >= 2, "scheduled Drifter must spawn at tick 1200");
+});
+
+test("fall_enabled=false disables fall damage and zero-tick scenario drifter/charm normalize cleanly", () => {
+  const lines = runHeadlessSimulation({
+    seed: 1,
+    night: 2,
+    tuning: { fall_enabled: false },
+    scenario: {
+      player: { pos: [35, -12, 0], carried: 2, flames: 3 },
+      random_motes: false,
+      random_shades: false,
+      random_drifters: false,
+      drifters: [{ id: "D1", pos: [0, 1.6, 0], state: "flee", stolen: 2, state_ticks_left: 0 }],
+      charms: [{ id: "C1", available: false, respawn_ticks: 0 }],
+    },
+    maxTicks: 5,
+    snapshotEvery: 1,
+  });
+  assert.equal(lines.some((l) => l.type === "event" && l.name === "player_hit"), false);
+  const snap2 = lines.find((l) => l.type === "snapshot" && l.tick === 2);
+  assert.equal(snap2.drifters[0].state, "removed");
+  assert.equal(snap2.charms[0].available, true);
 });
 
 test("pause freezes sim_tick, time_left_s, cooldowns, and TTL while incrementing tick", () => {

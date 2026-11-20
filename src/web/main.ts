@@ -6,6 +6,7 @@ import { GameAudio } from "./audio.js";
 import { loadSettings, saveSettings } from "./settings.js";
 import { GameUI, NIGHT_METADATA } from "./ui.js";
 import {
+  applyPauseResumeAction,
   computeOffscreenLanternArrow,
   handleControlKeyDown,
 } from "./visualHelpers.js";
@@ -118,25 +119,27 @@ function startApp(): void {
 
   function togglePause(): void {
     if (screenMode === "playing" && world.state === "playing") {
-      stepGameWorld(world, { pause: true });
-      stepGameWorld(world, { pause: false });
-      screenMode = "paused";
-      clearInputs();
-      audio.stopBgm();
-      ui.showPause();
+      const state = applyPauseResumeAction(world, "pause", camYawDeg, stepGameWorld, handleGameEvents);
+      if (state === "paused") {
+        screenMode = "paused";
+        clearInputs();
+        audio.stopBgm();
+        ui.showPause();
+      }
     } else if (screenMode === "paused" && world.state === "paused") {
-      stepGameWorld(world, { pause: true });
-      stepGameWorld(world, { pause: false });
-      screenMode = "playing";
-      clearInputs();
-      audio.unlock();
-      audio.startBgm();
-      ui.showPlaying();
+      const state = applyPauseResumeAction(world, "resume", camYawDeg, stepGameWorld, handleGameEvents);
+      if (state === "playing") {
+        screenMode = "playing";
+        clearInputs();
+        audio.unlock();
+        audio.startBgm();
+        ui.showPlaying();
+      }
     }
   }
 
   const ui = new GameUI(settings, {
-    onStartCampaign: (night) => prepareNightIntro(night, night === 1),
+    onStartCampaign: (night) => prepareNightIntro(night, true),
     onStartNightFromIntro: beginActiveNight,
     onResume: () => togglePause(),
     onPauseRequest: () => togglePause(),
@@ -232,6 +235,11 @@ function startApp(): void {
   window.addEventListener("keydown", (e) => {
     audio.unlock();
     if (!e.repeat && (e.code === "Escape" || e.code === "KeyP")) {
+      if (screenMode === "paused" && ui.isSettingsOpen()) {
+        e.preventDefault();
+        ui.closeSettings();
+        return;
+      }
       if (screenMode === "playing" || screenMode === "paused") {
         e.preventDefault();
         togglePause();
@@ -374,7 +382,10 @@ function startApp(): void {
       windWarning: world.wind.enabled && world.wind.warning,
       windActive: world.wind.enabled && world.wind.active,
       windDirDeg: world.wind.dirDeg,
-      totalScore: totalCampaignScore,
+      totalScore:
+        resultShown && world.state === "won"
+          ? totalCampaignScore
+          : totalCampaignScore + world.score,
     });
 
     renderer.render(worldRenderer.scene, camera);

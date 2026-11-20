@@ -174,7 +174,8 @@ function repelFromLitLanterns(
         const dirZ = d > TIMER_EPS ? dz / d : 0;
         const stepX = lantern.pos[0] + dirX * safeRadius - current[0];
         const stepZ = lantern.pos[2] + dirZ * safeRadius - current[2];
-        const moved = moveHorizontalOnTerrain(night, current, stepX, stepZ, 0.45, false);
+        const floorPos: Vec3Tuple = [current[0], current[1] - SHADE_DEFAULT_Y, current[2]];
+        const moved = moveHorizontalOnTerrain(night, floorPos, stepX, stepZ, 0.45, false);
         const gy = getGroundY(night, moved.x, moved.z);
         current = [moved.x, (gy ?? 0) + SHADE_DEFAULT_Y, moved.z];
       }
@@ -183,22 +184,35 @@ function repelFromLitLanterns(
   return current;
 }
 
+function shadeFloorPos(pos: Vec3Tuple): Vec3Tuple {
+  return [pos[0], pos[1] - SHADE_DEFAULT_Y, pos[2]];
+}
+
 function createDroppedMotePosition(
   night: NightNumber,
-  playerPos: Vec3Tuple,
-  rng: () => number
+  originPos: Vec3Tuple,
+  rng: () => number,
+  fallbackPos?: Vec3Tuple
 ): Vec3Tuple {
-  const refY = getGroundY(night, playerPos[0], playerPos[2]) ?? Math.max(0, playerPos[1]);
+  const originGy = getGroundY(night, originPos[0], originPos[2]);
+  const fallbackGy = fallbackPos ? getGroundY(night, fallbackPos[0], fallbackPos[2]) : null;
+  const refY = originGy ?? fallbackGy ?? 0;
   for (let attempt = 0; attempt < 12; attempt++) {
     const angle = rng() * Math.PI * 2;
     const radius = 1.5 + rng() * 1.0;
-    const cx = playerPos[0] + Math.cos(angle) * radius;
-    const cz = playerPos[2] + Math.sin(angle) * radius;
+    const cx = originPos[0] + Math.cos(angle) * radius;
+    const cz = originPos[2] + Math.sin(angle) * radius;
     const snapped = snapToValidGround(night, cx, cz, refY);
     if (snapped) return snapped;
   }
-  const fallback = snapToValidGround(night, playerPos[0], playerPos[2], refY);
-  return fallback ?? [playerPos[0], refY, playerPos[2]];
+  return (
+    snapToValidGround(night, originPos[0], originPos[2], refY) ??
+    (fallbackPos ? snapToValidGround(night, fallbackPos[0], fallbackPos[2], refY) : null) ?? [
+      originPos[0],
+      refY,
+      originPos[2],
+    ]
+  );
 }
 
 /** Creates the default zero-order hold input state prior to frame 0. */
@@ -354,10 +368,15 @@ export function createGameWorld(options: {
     }
     for (const item of scenario.drifters) {
       const id = item.id ?? allocateId("D", drifterCounter, usedDrifterIds);
-      const state = item.state ?? "idle";
-      const stolen = item.stolen ?? 0;
-      const fleeTicksLeft =
+      let state = item.state ?? "idle";
+      let stolen = item.stolen ?? 0;
+      let fleeTicksLeft =
         state === "flee" ? (item.state_ticks_left ?? DRIFTER_FLEE_TICKS) : 0;
+      if (state === "flee" && fleeTicksLeft <= 0) {
+        state = "removed";
+        stolen = 0;
+        fleeTicksLeft = 0;
+      }
       drifters.push({
         id,
         pos: [item.pos[0], item.pos[1], item.pos[2]],
@@ -376,10 +395,14 @@ export function createGameWorld(options: {
     for (let i = 0; i < scenario.charms.length; i++) {
       const c = scenario.charms[i]!;
       const fallback = map.charms.find((m) => m.id === c.id)?.pos ?? [0, 0, 0];
-      const available = c.available ?? true;
-      const respawnTicksLeft = available
+      let available = c.available ?? true;
+      let respawnTicksLeft = available
         ? 0
         : c.respawn_ticks ?? (c.respawn_s !== undefined ? Math.round(c.respawn_s * 60) : CHARM_RESPAWN_TICKS);
+      if (!available && respawnTicksLeft <= 0) {
+        available = true;
+        respawnTicksLeft = 0;
+      }
       charms.push({
         id: c.id,
         pos: c.pos ? [c.pos[0], c.pos[1], c.pos[2]] : [...fallback],
@@ -626,7 +649,14 @@ function stepPlayerMovement(
     vy = 0;
     p.grounded = true;
     p.isLaunched = false;
-  } else if (gy !== null && p.grounded && !p.isLaunched && gy <= oldY + 0.45 && vy <= 0) {
+  } else if (
+    gy !== null &&
+    p.grounded &&
+    !p.isLaunched &&
+    vy <= 0 &&
+    gy <= oldY + 0.45 &&
+    gy >= oldY - 0.45
+  ) {
     ny = gy;
     vy = 0;
     p.grounded = true;
@@ -654,7 +684,7 @@ function stepPlayerMovement(
   p.pos = [moved.x, ny, moved.z];
   p.vel = [(moved.x - oldX) / DT_SEC, p.dashTicksLeft > 0 ? 0 : vy, (moved.z - oldZ) / DT_SEC];
 
-  if (ny < FALL_Y_THRESHOLD && !p.fallTriggered) {
+  if (world.tuning.fall_enabled && ny < FALL_Y_THRESHOLD && !p.fallTriggered) {
     p.fallTriggered = true;
     p.flames = Math.max(0, p.flames - 1);
     const lost = p.carried;
@@ -787,7 +817,7 @@ function stepSafeZones(world: GameWorld, clampNonEvadingOnly: boolean): void {
           const stepOut = Math.min(remaining, speedPerTick);
           const moved = moveHorizontalOnTerrain(
             world.night,
-            shade.pos,
+            shadeFloorPos(shade.pos),
             dirX * stepOut,
             dirZ * stepOut,
             0.45,
@@ -801,7 +831,7 @@ function stepSafeZones(world: GameWorld, clampNonEvadingOnly: boolean): void {
         const targetZ = lantern.pos[2] + dirZ * safeR;
         const moved = moveHorizontalOnTerrain(
           world.night,
-          shade.pos,
+          shadeFloorPos(shade.pos),
           targetX - shade.pos[0],
           targetZ - shade.pos[2],
           0.45,
@@ -878,7 +908,12 @@ function stepPulse(
       const counterRef = { value: world.nextMoteId };
       for (let i = 0; i < dropAmt; i++) {
         const id = allocateId("M", counterRef, used);
-        const dropPos = createDroppedMotePosition(world.night, drifter.pos, world.rng);
+        const dropPos = createDroppedMotePosition(
+          world.night,
+          drifter.pos,
+          world.rng,
+          world.player.pos
+        );
         world.motes.push({
           id,
           pos: dropPos,
@@ -910,15 +945,24 @@ function chooseShadeTarget(world: GameWorld, shade: ShadeEntity): [number, numbe
       return [35, 0];
     }
   }
-  if (world.night === 3 && world.player.pos[1] >= 2.5 && shade.pos[1] < 2.0) {
-    // Steer toward nearer ramp foot at R=30 (30° or 150°)
-    const r30a = (30 * Math.PI) / 180;
-    const r30b = (150 * Math.PI) / 180;
-    const pA: [number, number] = [30 * Math.cos(r30a), 30 * Math.sin(r30a)];
-    const pB: [number, number] = [30 * Math.cos(r30b), 30 * Math.sin(r30b)];
+  const shadeFloorY = shade.pos[1] - SHADE_DEFAULT_Y;
+  if (world.night === 3 && world.player.pos[1] >= 2.5 && shadeFloorY < 2.85) {
+    // Steer toward nearer ramp entrance at R=30.4 (30° or 150°), then straight up ramp centerline to crest
+    const radA = (30 * Math.PI) / 180;
+    const radB = (150 * Math.PI) / 180;
+    const pA: [number, number] = [30.4 * Math.cos(radA), 30.4 * Math.sin(radA)];
+    const pB: [number, number] = [30.4 * Math.cos(radB), 30.4 * Math.sin(radB)];
     const dA = Math.hypot(shade.pos[0] - pA[0], shade.pos[2] - pA[1]);
     const dB = Math.hypot(shade.pos[0] - pB[0], shade.pos[2] - pB[1]);
-    return dA <= dB ? pA : pB;
+    const rad = dA <= dB ? radA : radB;
+    const cosA = Math.cos(rad);
+    const sinA = Math.sin(rad);
+    const s = shade.pos[0] * cosA + shade.pos[2] * sinA;
+    const w = -shade.pos[0] * sinA + shade.pos[2] * cosA;
+    if (Math.abs(w) > 1.1 || s > 29.9) {
+      return [29.8 * cosA, 29.8 * sinA];
+    }
+    return [23.5 * cosA, 23.5 * sinA];
   }
   return [px, pz];
 }
@@ -934,7 +978,7 @@ function stepEnemies(world: GameWorld): void {
         const pushStep = world.tuning.pulse_push_m / SHADE_STUN_PUSH_TICKS;
         const moved = moveHorizontalOnTerrain(
           world.night,
-          shade.pos,
+          shadeFloorPos(shade.pos),
           shade.pushDir[0] * pushStep,
           shade.pushDir[1] * pushStep,
           0.45,
@@ -953,7 +997,7 @@ function stepEnemies(world: GameWorld): void {
       const recoilStep = SHADE_RECOIL_DIST_M / SHADE_RECOIL_TICKS;
       const moved = moveHorizontalOnTerrain(
         world.night,
-        shade.pos,
+        shadeFloorPos(shade.pos),
         shade.recoilDir[0] * recoilStep,
         shade.recoilDir[1] * recoilStep,
         0.45,
@@ -989,11 +1033,12 @@ function stepEnemies(world: GameWorld): void {
       dz = Math.sin(shade.wanderAngle) * SHADE_WANDER_SPEED * DT_SEC;
     }
 
-    const moved = moveHorizontalOnTerrain(world.night, shade.pos, dx, dz, 0.45, false);
+    const floorPos = shadeFloorPos(shade.pos);
+    const moved = moveHorizontalOnTerrain(world.night, floorPos, dx, dz, 0.45, false);
     if (moved.blocked && shade.state === "wander") {
       shade.wanderAngle += Math.PI * 0.75;
     }
-    const [bx, bz] = resolveBellTowerPush(world.night, moved.x, shade.pos[1], moved.z);
+    const [bx, bz] = resolveBellTowerPush(world.night, moved.x, floorPos[1], moved.z);
     const gy = getGroundY(world.night, bx, bz);
     shade.pos = [bx, (gy ?? 0) + SHADE_DEFAULT_Y, bz];
   }

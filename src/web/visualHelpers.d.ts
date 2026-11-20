@@ -34,3 +34,15 @@ export function computeOffscreenLanternArrow(
   height: number,
   margin?: number
 ): OffscreenArrowProjection;
+
+export function applyPauseResumeAction<
+  TWorld extends { state: string },
+  TPatch extends Record<string, unknown>,
+  TEvent
+>(
+  world: TWorld,
+  action: "pause" | "resume",
+  camYawDeg: number,
+  stepWorld: (world: TWorld, patch: TPatch) => TEvent[],
+  onEvents: (events: TEvent[]) => void
+): string;

@@ -352,6 +352,13 @@ test("headless CLI supports Nights 2 and 3 deterministically and parses Contract
         .status,
       2
     );
+    const negTimePath = path.join(tmpDir, "neg-time.json");
+    fs.writeFileSync(negTimePath, JSON.stringify({ time_left_s: -5 }));
+    assert.equal(
+      runCli(["--seed", "1", "--night", "1", "--scenario", negTimePath, "--ticks", "5", "--out", errOut])
+        .status,
+      2
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

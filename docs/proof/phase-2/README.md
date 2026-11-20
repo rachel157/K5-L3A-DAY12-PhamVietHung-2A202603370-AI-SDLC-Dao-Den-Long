@@ -7,9 +7,9 @@
 ## 1. Kết quả Build & Test Suite
 
 - **Lệnh build:** `npm run build` (`tsc -p tsconfig.cli.json` + `tsc -p tsconfig.web.json && vite build`)
-  - **Kết quả:** Thành công (`exit 0`), bundle Vite tạo `dist/index.html` (`9.53 kB`) và `dist/assets/index-C5E2spEF.js` (`625.39 kB`, built in `277–294ms`).
+  - **Kết quả:** Thành công (`exit 0`), bundle Vite tạo `dist/index.html` (`9.53 kB`) và `dist/assets/index-Dixi8Y_U.js` (`626.78 kB`, built in `315ms`).
 - **Lệnh kiểm thử:** `npm test` (`npm run build:cli && node --test`)
-  - **Kết quả:** **39 / 39 subtests PASS (`0 fail`, `0 skipped`, `~3.14s`)** trên các nhóm kiểm thử:
+  - **Kết quả:** **44 / 44 subtests PASS (`0 fail`, `0 skipped`, `~3.49s`)** trên các nhóm kiểm thử:
     - `tests/contract-sync.test.mjs` — `game.contract.json` (`contract_version: "1.1"`) khớp 1:1 với `DEFAULT_TUNING`.
     - `tests/core-boundary.test.mjs` — `src/core/` không có `three`, DOM, `process`, `Math.random`, `Date.now`.
     - `tests/maps-terrain.test.mjs` — Bản đồ 3 Đêm (`Đảo Bến`, `Đảo Cau`, `Đảo Chuông`), `spawnPos` đứng đất, Đêm 2 cầu tre/2 đảo/vực, Đêm 3 dốc kín mép `r=24`, chặn vách đứng, Tháp Chuông `r=2.0`.
@@ -25,8 +25,8 @@
 
 - **Benchmark 21.600 ticks Đêm 3 (CLI headless ghi file JSONL đầy đủ 21.600 tick, có shades/drifters/motes/gió):**
   - Lệnh: `node dist-cli/cli/headless.js --seed 7 --night 3 --scenario <flames:9999,wind:true> --ticks 21600 --out ...`
-  - **Kết quả quan sát:** **`456.7 ms`** (`0.46 giây`, ghi `2.225` dòng JSONL, kết thúc `{"type":"end","ticks":21600,"state":"lost","score":0}`) — đạt chuẩn `<= 30s` (và unit benchmark đạt `386.9 ms`).
-  - **Mặc định không scenario (`--seed 7 --night 3 --ticks 21600`):** **`230.9 ms`**, sống trên Tầng 0 tới tick `8279` (`845` dòng).
+  - **Kết quả quan sát:** **`694.2 ms`** (`0.69 giây`, ghi `2.225` dòng JSONL, kết thúc `{"type":"end","ticks":21600,"state":"lost","score":0}`) — đạt chuẩn `<= 30s` (và unit benchmark đạt `409.1 ms`).
+  - **Mặc định không scenario (`--seed 7 --night 3 --ticks 21600`):** **`343.6 ms`**, sống trên Tầng 0 tới tick `8279` (`845` dòng).
 - **Kiểm tra byte-for-byte identical khi chạy 2 lần cùng seed (`--seed 7 --ticks 60`):**
   - `--night 1`: `NIGHT_1_IDENTICAL=true BYTES=13408`
   - `--night 2`: `NIGHT_2_IDENTICAL=true BYTES=13632`

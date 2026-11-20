@@ -103,6 +103,7 @@ export class GameUI {
   private readonly moteSlotDivs: HTMLDivElement[] = [];
   private bannerTimeout: number | null = null;
   private returnFromSettings: "menu" | "pause" = "menu";
+  private settingsOpen = false;
   private settings: GameSettings;
   private muted = false;
 
@@ -161,8 +162,22 @@ export class GameUI {
   }
 
   private clearActions(): void {
+    this.settingsOpen = false;
     this.modalActionsEl.innerHTML = "";
     this.settingsPanelEl.style.display = "none";
+  }
+
+  isSettingsOpen(): boolean {
+    return this.settingsOpen;
+  }
+
+  closeSettings(): void {
+    if (!this.settingsOpen) return;
+    if (this.returnFromSettings === "pause") {
+      this.showPause();
+    } else {
+      this.showMainMenu();
+    }
   }
 
   private addActionButton(label: string, onClick: () => void, secondary = false): HTMLButtonElement {
@@ -241,6 +256,7 @@ export class GameUI {
     this.returnFromSettings = from;
     this.overlayEl.classList.add("open");
     this.clearActions();
+    this.settingsOpen = true;
     this.settingsPanelEl.style.display = "flex";
     this.syncSettingsInputs();
     this.setMuteLabel(this.muted);
@@ -249,13 +265,7 @@ export class GameUI {
     this.modalSubtitleEl.textContent = "Tùy chỉnh được lưu tự động trên trình duyệt";
     this.modalBodyEl.textContent = "";
 
-    this.addActionButton("Quay lại", () => {
-      if (this.returnFromSettings === "pause") {
-        this.showPause();
-      } else {
-        this.showMainMenu();
-      }
-    });
+    this.addActionButton("Quay lại", () => this.closeSettings());
   }
 
   showResult(params: {
@@ -341,7 +351,7 @@ export class GameUI {
     const litCount = snap.lanterns.filter((l) => l.lit).length;
     this.lanternsEl.textContent = `${litCount} / ${snap.lanterns.length}`;
     this.scoreEl.textContent = String(snap.score);
-    this.totalScoreEl.textContent = String(dyn.totalScore + snap.score);
+    this.totalScoreEl.textContent = String(dyn.totalScore);
 
     // Zone 4: 10 Firefly Slots
     this.moteLabelEl.textContent = `Đom đóm: ${snap.player.carried} / 10`;

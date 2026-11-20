@@ -5,7 +5,11 @@ import {
   loadSettings,
   saveSettings,
 } from "../dist-cli/web/settings.js";
-import { computeOffscreenLanternArrow } from "../src/web/visualHelpers.js";
+import { createGameWorld, stepGameWorld } from "../dist-cli/core/game.js";
+import {
+  applyPauseResumeAction,
+  computeOffscreenLanternArrow,
+} from "../src/web/visualHelpers.js";
 
 function createFakeStorage() {
   const map = new Map();
@@ -57,4 +61,31 @@ test("computeOffscreenLanternArrow hides arrow on screen and clamps/rotates corr
   assert.equal(behindLeft.visible, true);
   assert.equal(Math.round(behindLeft.x), 48);
   assert.ok(Math.abs(Math.abs(behindLeft.angleDeg) - 180) < 1);
+});
+
+test("applyPauseResumeAction zeroes stale inputs and surfaces game_over without softlock", () => {
+  const world = createGameWorld({
+    seed: 1,
+    night: 1,
+    scenario: {
+      player: { pos: [0, 0, 0], carried: 0, flames: 3 },
+      random_motes: false,
+      random_shades: false,
+      time_left_s: 1 / 60,
+    },
+  });
+  // Pause after holding forward move
+  stepGameWorld(world, { move: [0, 1], interact: true, pause: true });
+  stepGameWorld(world, { pause: false });
+  assert.equal(world.state, "paused");
+
+  const collected = [];
+  const nextState = applyPauseResumeAction(world, "resume", 0, stepGameWorld, (events) => {
+    for (const ev of events) collected.push(ev);
+  });
+
+  assert.equal(world.player.pos[2], 0, "resuming must zero stale move inputs");
+  assert.ok(collected.some((e) => e.name === "resumed"));
+  assert.ok(collected.some((e) => e.name === "game_over"), "dawn on resume tick must emit game_over");
+  assert.equal(nextState, "lost");
 });
