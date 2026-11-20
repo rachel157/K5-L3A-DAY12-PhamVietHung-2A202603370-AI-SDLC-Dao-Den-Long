@@ -48,5 +48,6 @@ Trong Phase 1–2 (`Contract v1.0` & `v1.1`), mỗi Đèn Lồng Lớn chỉ man
 
 ## 4. Hệ quả & Truy vết Test
 
-- Các test cũ Phase 1–2 assert `all_lit`, `300/330/360s`, `score.per_mote = 10` hoặc Bóng Mực không thể tiến vào vùng `6m` của mọi đèn đang sáng phải được cập nhật theo Contract `v1.2` kèm ghi chú rõ ràng.
+- Các test cũ Phase 1–2 assert `all_lit`, `300/330/360s`, `score.per_mote = 10` hoặc Bóng Mực không thể tiến vào vùng `6m` của mọi đèn đang sáng đã được cập nhật theo Contract `v1.2` kèm chú thích `[THAY THẾ v1.2]` trong `tests/core-game.test.mjs`, `tests/phase2-features.test.mjs` và `tests/cli-headless.test.mjs` (đầy đủ danh sách tại `CHANGELOG.md`).
+- Các test mới cho `fuel`, `refuel`, `lantern_out`, `relight`, `drain` (`+15` Pulse, `fuel_drain` mỗi `60` tick), `capacity` (`10 → 20`), `dawn_survived` / ưu tiên `no_flames`, `target_lantern_id` validation và `colorblindMode` nằm ở `tests/phase3-features.test.mjs`, `tests/cli-headless.test.mjs` và `tests/web-ui-settings.test.mjs`.
 - Mọi cơ chế không bị thay thế (di chuyển, nhảy, lướt + bục nhảy, bản đồ 3 Đêm, Gió Lạc, Bùa Gió, rơi `Y < -10`, gió mạnh Đêm 3, Pause/Resume) tiếp tục giữ nguyên 100% pass.

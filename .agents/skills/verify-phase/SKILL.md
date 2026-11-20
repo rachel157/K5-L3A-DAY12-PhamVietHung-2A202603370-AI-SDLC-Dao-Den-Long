@@ -33,7 +33,7 @@ Run this procedure at the end of every phase before committing proof or creating
    node dist-cli/cli/headless.js --seed 7 --night 3 --ticks 60 --out verify-n3-r1.jsonl
    node dist-cli/cli/headless.js --seed 7 --night 3 --ticks 60 --out verify-n3-r2.jsonl
    ```
-   Confirm each night's `r1` and `r2` are byte-for-byte identical (plus benchmark 21,600 ticks on Night 3 completes in <= 30s), then delete the temporary `.jsonl` files.
+   Confirm each night's `r1` and `r2` are byte-for-byte identical (plus benchmark 21,600 ticks on Night 3 with `time_left_s: 360` or default 18,000-tick Night 3 `<= 30s`), then delete the temporary `.jsonl` files.
 
 4. **Clean git state & secret check:**
    Run `git status` and confirm no `.env`, API keys, or temporary artifacts are staged.
