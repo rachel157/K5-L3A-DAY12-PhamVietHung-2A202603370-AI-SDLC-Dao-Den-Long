@@ -31,11 +31,9 @@ npm run preview
   ```bash
   npm test
   ```
-- **Chạy chế độ headless (tất định theo seed):**
+- **Chạy chế độ headless (tất định theo Test Contract v1.0):**
   ```bash
-  npm run headless
-  # hoặc truyền tham số trực tiếp (chạy đồng nhất trên bash, zsh, cmd và PowerShell):
-  node dist-cli/cli/headless.js --seed 7 --ticks 20 --dt 0.05
+  node dist-cli/cli/headless.js --seed 7 --night 1 --ticks 60 --out run1.jsonl
   ```
 
 ---

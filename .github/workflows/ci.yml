@@ -31,7 +31,7 @@ jobs:
 
       - name: Run headless determinism smoke check
         run: |
-          out1=$(node dist-cli/cli/headless.js --seed 7 --ticks 20)
-          out2=$(node dist-cli/cli/headless.js --seed 7 --ticks 20)
-          echo "$out1"
-          test "$out1" = "$out2"
+          node dist-cli/cli/headless.js --seed 7 --night 1 --ticks 60 --out /tmp/r1.jsonl
+          node dist-cli/cli/headless.js --seed 7 --night 1 --ticks 60 --out /tmp/r2.jsonl
+          diff -u /tmp/r1.jsonl /tmp/r2.jsonl
+          tail -n 1 /tmp/r1.jsonl

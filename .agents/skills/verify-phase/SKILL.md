@@ -26,10 +26,10 @@ Run this procedure at the end of every phase before committing proof or creating
 
 3. **Determinism check (two identical headless runs across bash/PowerShell):**
    ```bash
-   node dist-cli/cli/headless.js --seed 7 --ticks 20
-   node dist-cli/cli/headless.js --seed 7 --ticks 20
+   node dist-cli/cli/headless.js --seed 7 --night 1 --ticks 60 --out verify-run1.jsonl
+   node dist-cli/cli/headless.js --seed 7 --night 1 --ticks 60 --out verify-run2.jsonl
    ```
-   Confirm both runs produce byte-for-byte identical output.
+   Confirm `verify-run1.jsonl` and `verify-run2.jsonl` are byte-for-byte identical, then delete the temporary `.jsonl` files.
 
 4. **Clean git state & secret check:**
    Run `git status` and confirm no `.env`, API keys, or temporary artifacts are staged.
