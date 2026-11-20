@@ -40,6 +40,26 @@
 
 ---
 
-## Phase 2 … Phase 4
+## Phase 2 (TICKET-02 — "Ba hòn đảo", Contract v1.1)
+
+- **Công cụ AI:** Google Antigravity (thực thi kế hoạch 6 task theo chuẩn TDD + `builder-check` + `final code-review` model `pro`).
+- **Công việc đã giao AI:**
+  1. Thiết kế & kiểm tra chéo giả định (`docs/superpowers/specs/2026-11-20-phase-2-design.md`, `P2-01..P2-10` trong `docs/notes/assumptions.md`).
+  2. Nâng cấp `game.contract.json` (`v1.1`), viết `src/core/maps.ts` (3 đảo + cầu tre + dốc 30°/150° nối kín mép + bục nhảy + Tháp Chuông), nâng cấp lõi 12 bước `src/core/game.ts`, mở rộng CLI `--night 1|2|3` & schema `v1.1`.
+  3. Hoàn thiện 3D Three.js 3 hòn đảo theo bảng màu chuẩn (`src/web/worldScene.ts`), Web Audio BGM + 10+ SFX (`src/web/audio.ts`), cài đặt `localStorage` (`src/web/settings.ts`), chiến dịch Menu/Intro Ông Đăng/Pause/Bình Minh + HUD 7 vùng (`src/web/ui.ts`, `index.html`).
+  4. Bộ kiểm thử hồi quy & tính năng mới (`39/39` subtests), cập nhật harness (`AGENTS.md`, `SKILL.md`, `ci.yml`), kiểm chứng clean-clone và ghi bằng chứng Phase 2.
+- **Lỗi AI / sự cố kỹ thuật phát hiện & cách khắc phục:**
+  - *Bục nhảy Đêm 2 kết hợp Lướt trên không (`src/core/game.ts`):* Bản đầu khi Lướt trên không đã gán cứng `vy = 0` và xóa luôn vận tốc đứng sau khi kết thúc `12` tick lướt, khiến Mây bị hụt vòm nhảy và rơi xuống vực giữa hai đảo. Đã thêm `savedLaunchVy` lưu vận tốc đứng lúc bắt đầu lướt khi đang `isLaunched` và khôi phục lại ngay khi hết `12` tick lướt.
+  - *Điểm xuất phát Đêm 3 bị đặt nhầm tại `[0, 0, 0]` (`src/core/maps.ts`):* Khi chạy benchmark CLI thực tế `21.600` tick ở Đêm 3, đầu ra cho thấy Mây chết ngay ở tick `300` vì `[0, 0, 0]` nằm bên dưới sàn Tầng 2 (`Y=6`) và bên trong Tháp Chuông! Đã sửa `Night 3` `spawnPos` thành `[0, 0, -20]` trên mặt Tầng 0 (`Y=0`), thêm assertion bắt buộc mọi Đêm có `getGroundY === spawnPos[1]` trong `tests/maps-terrain.test.mjs`, và ghi giả định `P2-10`.
+  - *Off-by-1 test Bùa Gió tái sinh (`tests/phase2-features.test.mjs`):* Do Mây đứng đúng tại `[35, 0, 0]` đến tick `2701`, Step 4 trong chính tick Bùa vừa tái sinh (`Step 2`) lập tức nhặt lại Bùa lần 2 nên `available` lại thành `false`. Đã cho Mây bước đi khỏi vị trí bùa sau khi nhặt ở tick `1` để đo đúng trạng thái `false` ở tick `2700` và `true` ở tick `2701`.
+  - *Ràng buộc static `core-boundary.test.mjs`:* Comment chứa từ `process` trong `src/core/game.ts` làm test biên giới báo lỗi; đã đổi từ mô tả comment sang `handle`.
+- **Chiến lược tiết kiệm & kiểm soát token:**
+  - Dùng lại bộ test `node:test` nhanh gọn, gom 6 task theo hợp đồng interface kiểm tra trước (`pre-flight check`), chỉ gọi `1` subagent reviewer `pro` độc lập cuối nhánh thay vì gọi ở mọi task nhỏ.
+  - Cập nhật `AGENTS.md` gọn `30` dòng (`< 60` dòng) để giảm context overhead cho các phase sau.
+- **Ước tính token/chi phí Phase 2:** ~180k–260k tokens (tính qua các lượt đọc/viết đa file 3 Đêm, TDD 39 test và final review `pro`; xem thống kê chính xác trên giao diện billing công cụ).
+
+---
+
+## Phase 3 … Phase 4
 
 *Sẽ ghi bổ sung sau mỗi phase.*
