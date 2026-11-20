@@ -81,3 +81,10 @@ export function getLowFuelHudStatus(
 ): LowFuelHudStatus;
 
 export function computeBenchCameraPos(elapsedSec: number): Vec3Tuple;
+
+export function buildAccessibilitySubtitle(params: {
+  shadeSpawnActive: boolean;
+  windWarning: boolean;
+  timeLeftSec: number;
+  weakLanternCount: number;
+}): string;

@@ -1,8 +1,10 @@
 import * as THREE from "three";
 import { DT_SEC, TICKS_PER_SEC } from "../core/contract.js";
 import { createBenchWorld, createGameWorld, stepBenchWorld, stepGameWorld, toSnapshot } from "../core/game.js";
+import { formatIsoWithTimezone } from "../core/leaderboard.js";
 import type { GameEvent, GameWorld, NightNumber } from "../core/types.js";
 import { GameAudio } from "./audio.js";
+import { fetchLeaderboard, submitLeaderboardEntry } from "./leaderboardClient.js";
 import { loadSettings, saveSettings } from "./settings.js";
 import { GameUI, NIGHT_METADATA } from "./ui.js";
 import {
@@ -190,6 +192,7 @@ function startApp(): void {
   let currentNight: NightNumber = 1;
   let currentSeed = 1;
   let totalCampaignScore = 0;
+  let nightsWon = 0;
   let world = createGameWorld({ seed: currentSeed, night: currentNight });
   worldRenderer.rebuildForWorld(world);
 
@@ -199,6 +202,8 @@ function startApp(): void {
   let screenMode: "menu" | "intro" | "playing" | "paused" | "result" = "menu";
   let resultShown = false;
   let lastCountdownSec = -1;
+  let lastSpawnedShadeId: string | null = null;
+  let shadeSpawnUntilMs = 0;
   const weakWarnedLanterns = new Set<string>();
   const pressedKeys = new Set<string>();
   const tmpVec = new THREE.Vector3();
@@ -209,7 +214,10 @@ function startApp(): void {
   }
 
   function prepareNightIntro(night: NightNumber, resetCampaignScore: boolean): void {
-    if (resetCampaignScore) totalCampaignScore = 0;
+    if (resetCampaignScore) {
+      totalCampaignScore = 0;
+      nightsWon = 0;
+    }
     currentNight = night;
     currentSeed += 1;
     world = createGameWorld({ seed: currentSeed, night: currentNight });
@@ -217,6 +225,8 @@ function startApp(): void {
     camYawDeg = 0;
     resultShown = false;
     lastCountdownSec = -1;
+    lastSpawnedShadeId = null;
+    shadeSpawnUntilMs = 0;
     weakWarnedLanterns.clear();
     clearInputs();
     screenMode = "intro";
@@ -285,10 +295,26 @@ function startApp(): void {
       settings = saveSettings(next);
       audio.setVolume(settings.volume);
       worldRenderer.setColorblindMode(settings.colorblindMode);
+      worldRenderer.setReduceMotion(settings.reduceMotion);
+    },
+    onOpenLeaderboard: () => {
+      void fetchLeaderboard().then((entries) => {
+        ui.showLeaderboard(entries);
+      });
+    },
+    onSubmitLeaderboard: async (name) => {
+      await submitLeaderboardEntry({
+        name,
+        score: totalCampaignScore,
+        nights_won: nightsWon,
+        achieved_at: formatIsoWithTimezone(new Date()),
+        seed: currentSeed,
+      });
     },
   });
 
   worldRenderer.setColorblindMode(settings.colorblindMode);
+  worldRenderer.setReduceMotion(settings.reduceMotion);
   ui.setMuteLabel(audio.isMuted());
   ui.showMainMenu();
 
@@ -331,6 +357,8 @@ function startApp(): void {
         audio.playDash();
       } else if (ev.name === "shade_spawned") {
         audio.playShadeSpawn();
+        lastSpawnedShadeId = ev.data.id;
+        shadeSpawnUntilMs = performance.now() + 3500;
         ui.showBanner("Bóng Mực vừa xuất hiện trong sương!", true);
       } else if (ev.name === "drifter_steal") {
         audio.playDrifterSteal();
@@ -350,6 +378,7 @@ function startApp(): void {
         audio.stopBgm();
         if (ev.data.result === "won") {
           totalCampaignScore += world.score;
+          nightsWon = Math.min(3, nightsWon + 1);
           audio.playWin();
         } else {
           audio.playLoss();
@@ -369,7 +398,8 @@ function startApp(): void {
 
   window.addEventListener("keydown", (e) => {
     audio.unlock();
-    if (!e.repeat && (e.code === "Escape" || e.code === "KeyP")) {
+    if (ui.isListeningKeybind()) return;
+    if (!e.repeat && (e.code === settings.keybinds.pause || e.code === "Escape" || e.code === "KeyP")) {
       if (screenMode === "paused" && ui.isSettingsOpen()) {
         e.preventDefault();
         ui.closeSettings();
@@ -381,7 +411,7 @@ function startApp(): void {
         return;
       }
     }
-    if (!e.repeat && e.code === "KeyM") {
+    if (!e.repeat && e.code === "KeyM" && settings.keybinds.interact !== "KeyM") {
       const muted = audio.toggleMute();
       ui.setMuteLabel(muted);
       if (!muted && screenMode === "playing") audio.startBgm();
@@ -438,20 +468,21 @@ function startApp(): void {
       if (pressedKeys.has("KeyQ")) camYawDeg = (camYawDeg + 110 * dtFrame) % 360;
       if (pressedKeys.has("KeyC")) camYawDeg = (camYawDeg - 110 * dtFrame) % 360;
 
+      const kb = settings.keybinds;
       let moveX = 0;
       let moveZ = 0;
-      if (pressedKeys.has("KeyW") || pressedKeys.has("ArrowUp")) moveZ += 1;
-      if (pressedKeys.has("KeyS") || pressedKeys.has("ArrowDown")) moveZ -= 1;
-      if (pressedKeys.has("KeyA") || pressedKeys.has("ArrowLeft")) moveX += 1;
-      if (pressedKeys.has("KeyD") || pressedKeys.has("ArrowRight")) moveX -= 1;
+      if (pressedKeys.has(kb.moveForward) || pressedKeys.has("ArrowUp")) moveZ += 1;
+      if (pressedKeys.has(kb.moveBackward) || pressedKeys.has("ArrowDown")) moveZ -= 1;
+      if (pressedKeys.has(kb.moveLeft) || pressedKeys.has("ArrowLeft")) moveX += 1;
+      if (pressedKeys.has(kb.moveRight) || pressedKeys.has("ArrowRight")) moveX -= 1;
 
-      const jump = pressedKeys.has("Space");
+      const jump = pressedKeys.has(kb.jump);
       const dash =
-        pressedKeys.has("ShiftLeft") ||
+        pressedKeys.has(kb.dash) ||
         pressedKeys.has("ShiftRight") ||
         pressedKeys.has("MouseRightDash");
-      const interact = pressedKeys.has("KeyE");
-      const pulse = pressedKeys.has("KeyR") || pressedKeys.has("KeyF");
+      const interact = pressedKeys.has(kb.interact);
+      const pulse = pressedKeys.has(kb.pulse) || pressedKeys.has("KeyF");
 
       accumulator += dtFrame;
       while (accumulator >= DT_SEC) {
@@ -506,7 +537,11 @@ function startApp(): void {
       world.player.pos[1] + camHeight,
       world.player.pos[2] - Math.cos(theta) * camDist
     );
-    camera.position.lerp(targetCamPos, screenMode === "menu" ? 0.05 : 0.18);
+    if (settings.reduceMotion) {
+      camera.position.copy(targetCamPos);
+    } else {
+      camera.position.lerp(targetCamPos, screenMode === "menu" ? 0.05 : 0.18);
+    }
     camera.lookAt(world.player.pos[0], world.player.pos[1] + 1.15, world.player.pos[2]);
     camera.updateMatrixWorld();
 
@@ -526,9 +561,29 @@ function startApp(): void {
       );
     }
 
+    const shadeSpawnActive = nowMs < shadeSpawnUntilMs && screenMode === "playing";
+    let shadeArrow = { visible: false, x: 0, y: 0, angleDeg: 0 };
+    if (shadeSpawnActive && lastSpawnedShadeId) {
+      const targetShade =
+        world.shades.find((s) => s.id === lastSpawnedShadeId) ?? world.shades[0];
+      if (targetShade) {
+        tmpVec.set(targetShade.pos[0], targetShade.pos[1] + 0.8, targetShade.pos[2]);
+        tmpVec.applyMatrix4(camera.matrixWorldInverse);
+        shadeArrow = computeOffscreenLanternArrow(
+          [tmpVec.x, tmpVec.y, tmpVec.z],
+          THREE.MathUtils.degToRad(camera.fov),
+          camera.aspect,
+          window.innerWidth,
+          window.innerHeight
+        );
+      }
+    }
+
     ui.updateHud(toSnapshot(world), {
       interactPrompt: findInteractPrompt(world),
       nearestArrow,
+      shadeArrow,
+      shadeSpawnActive,
       windWarning: world.wind.enabled && world.wind.warning,
       windActive: world.wind.enabled && world.wind.active,
       windDirDeg: world.wind.dirDeg,

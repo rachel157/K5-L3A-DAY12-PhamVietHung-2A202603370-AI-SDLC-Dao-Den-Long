@@ -3,13 +3,16 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  DEFAULT_KEYBINDS,
   DEFAULT_SETTINGS,
+  findDuplicateKeybind,
   loadSettings,
   saveSettings,
 } from "../dist-cli/web/settings.js";
 import { createGameWorld, stepGameWorld } from "../dist-cli/core/game.js";
 import {
   applyPauseResumeAction,
+  buildAccessibilitySubtitle,
   computeLanternVisualState,
   computeOffscreenLanternArrow,
   formatColorblindAlert,
@@ -36,8 +39,14 @@ test("loadSettings returns defaults and saves/restores volume, mouseSensitivity,
   });
 
   const saved = saveSettings({ volume: 0.35, mouseSensitivity: 1.8, colorblindMode: true }, storage);
-  assert.deepEqual(saved, { volume: 0.35, mouseSensitivity: 1.8, colorblindMode: true });
+  assert.deepEqual(saved, {
+    ...DEFAULT_SETTINGS,
+    volume: 0.35,
+    mouseSensitivity: 1.8,
+    colorblindMode: true,
+  });
   assert.deepEqual(loadSettings(storage), {
+    ...DEFAULT_SETTINGS,
     volume: 0.35,
     mouseSensitivity: 1.8,
     colorblindMode: true,
@@ -207,4 +216,53 @@ test("getLowFuelHudStatus triggers ⚠ warning on passive <30 fuel or active dra
   const html = fs.readFileSync(path.resolve("index.html"), "utf8");
   assert.match(html, /body\.colorblind\s*\{[^}]*--crimson:\s*#ffffff/i);
   assert.match(html, /id="hud-fuel-pill"/);
+});
+
+test("Phase 4 accessibility: keybinds, duplicate detection, reduceMotion, largeText, subtitles, and >=18px CSS", () => {
+  const storage = createFakeStorage();
+  const def = loadSettings(storage);
+  assert.equal(def.reduceMotion, false);
+  assert.equal(def.largeText, false);
+  assert.deepEqual(def.keybinds, DEFAULT_KEYBINDS);
+
+  assert.equal(findDuplicateKeybind(DEFAULT_KEYBINDS, "jump", "KeyE"), "interact");
+  assert.equal(findDuplicateKeybind(DEFAULT_KEYBINDS, "jump", "Space"), null);
+  assert.equal(findDuplicateKeybind(DEFAULT_KEYBINDS, "jump", "KeyZ"), null);
+
+  const saved = saveSettings(
+    {
+      reduceMotion: true,
+      largeText: true,
+      keybinds: { ...DEFAULT_KEYBINDS, interact: "KeyG" },
+    },
+    storage
+  );
+  assert.equal(saved.reduceMotion, true);
+  assert.equal(saved.largeText, true);
+  assert.equal(saved.keybinds.interact, "KeyG");
+  assert.equal(loadSettings(storage).keybinds.interact, "KeyG");
+
+  const sub = buildAccessibilitySubtitle({
+    shadeSpawnActive: true,
+    windWarning: true,
+    timeLeftSec: 8,
+    weakLanternCount: 1,
+  });
+  assert.ok(sub.includes("Bóng Mực"));
+  assert.ok(sub.includes("Gió"));
+  assert.ok(sub.includes("10s") || sub.includes("8s"));
+  assert.ok(sub.includes("30"));
+
+  const html = fs.readFileSync(path.resolve("index.html"), "utf8");
+  assert.match(html, /body\.large-text\s*\{[^}]*--font-scale:\s*1\.25/);
+  assert.match(html, /body\.reduce-motion/);
+  assert.match(html, /id="subtitle-box"/);
+  assert.match(html, /id="shade-arrow"/);
+
+  // Every explicit px font-size in index.html must be >= 18px
+  const fontMatches = [...html.matchAll(/font-size:\s*(?:calc\()?([0-9]+(?:\.[0-9]+)?)px/g)];
+  assert.ok(fontMatches.length > 0);
+  for (const m of fontMatches) {
+    assert.ok(Number(m[1]) >= 18, `Found font-size < 18px in index.html: ${m[0]}`);
+  }
 });

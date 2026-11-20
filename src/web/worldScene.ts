@@ -113,6 +113,7 @@ export class WorldSceneRenderer {
     color: PALETTE.shadeColorblindCyan,
   });
   private colorblindMode = false;
+  private reduceMotion = false;
 
   private readonly drifterBodyGeo = new THREE.ConeGeometry(0.32, 1.15, 8);
   private readonly drifterRibbonGeo = new THREE.TorusGeometry(0.38, 0.05, 6, 16);
@@ -568,6 +569,10 @@ export class WorldSceneRenderer {
     }
   }
 
+  setReduceMotion(enabled: boolean): void {
+    this.reduceMotion = enabled;
+  }
+
   spawnPulseWave(x: number, y: number, z: number): void {
     const mat = new THREE.MeshBasicMaterial({
       color: PALETTE.lanternGlow,
@@ -586,9 +591,11 @@ export class WorldSceneRenderer {
     // Mây + hanging lantern + orbiting motes
     this.mayGroup.position.set(world.player.pos[0], world.player.pos[1], world.player.pos[2]);
     this.mayGroup.rotation.y = Math.atan2(world.player.facing[0], world.player.facing[1]);
-    this.smallLantern.position.x = Math.sin(nowSec * 3.5) * 0.04;
+    this.smallLantern.position.x = this.reduceMotion ? 0 : Math.sin(nowSec * 3.5) * 0.04;
     this.playerLight.intensity =
-      world.player.invulnTicks > 0 && Math.floor(nowSec * 12) % 2 === 0 ? 0.6 : 2.4;
+      !this.reduceMotion && world.player.invulnTicks > 0 && Math.floor(nowSec * 12) % 2 === 0
+        ? 0.6
+        : 2.4;
 
     for (let i = 0; i < this.carriedOrbs.length; i++) {
       const orb = this.carriedOrbs[i]!;
@@ -747,7 +754,13 @@ export class WorldSceneRenderer {
           ? world.lanterns.find((l) => l.id === shade.targetLanternId)
           : undefined;
       const faceTarget = drainTarget ? drainTarget.pos : world.player.pos;
-      applyShadeFacing(g, shade.pos, faceTarget, shade.state === "stunned", nowSec);
+      applyShadeFacing(
+        g,
+        shade.pos,
+        faceTarget,
+        !this.reduceMotion && shade.state === "stunned",
+        nowSec
+      );
       const { body, leftEye, rightEye, rim } = g.userData as {
         body: THREE.Mesh;
         leftEye: THREE.Mesh;
@@ -755,7 +768,8 @@ export class WorldSceneRenderer {
         rim: THREE.Mesh;
       };
       rim.visible = this.colorblindMode;
-      body.scale.y = shade.state === "drain" ? 1 + Math.sin(nowSec * 10) * 0.08 : 1;
+      body.scale.y =
+        !this.reduceMotion && shade.state === "drain" ? 1 + Math.sin(nowSec * 10) * 0.08 : 1;
       if (shade.state === "stunned") {
         body.material = this.shadeMatStunned;
         leftEye.material = this.shadeEyeStunMat;

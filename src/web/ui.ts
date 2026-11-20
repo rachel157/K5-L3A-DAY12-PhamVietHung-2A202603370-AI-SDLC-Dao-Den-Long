@@ -1,8 +1,17 @@
 import { DEFAULT_TUNING } from "../core/contract.js";
+import { validateLeaderboardName, type LeaderboardEntry } from "../core/leaderboard.js";
 import type { GameSnapshot, NightNumber } from "../core/types.js";
-import type { GameSettings } from "./settings.js";
+import {
+  DEFAULT_KEYBINDS,
+  KEY_ACTION_LABELS,
+  findDuplicateKeybind,
+  formatKeyCode,
+  type GameSettings,
+  type KeyAction,
+} from "./settings.js";
 import {
   bindHudActionButton,
+  buildAccessibilitySubtitle,
   formatColorblindAlert,
   getLowFuelHudStatus,
 } from "./visualHelpers.js";
@@ -13,6 +22,7 @@ export type ScreenMode =
   | "playing"
   | "paused"
   | "settings"
+  | "leaderboard"
   | "result";
 
 export interface NightMetadata {
@@ -28,7 +38,7 @@ export const NIGHT_METADATA: Record<NightNumber, NightMetadata> = {
     islandName: "Đảo Bến",
     title: "Đêm 1 · Đảo Bến",
     ongDangSpeech:
-      "Ông Đăng: “Sương đen đang hút cạn dầu! Mây hãy nhặt đom đóm, nhấn E thắp hoặc châm dầu, và giữ ít nhất 3/5 đèn sáng tới bình minh (04:00) nhé!”",
+      "Ông Đăng: “Sương đen đang hút cạn dầu! Mây hãy nhặt đom đóm, nhấn phím tương tác để thắp hoặc châm dầu, và giữ ít nhất 3/5 đèn sáng tới bình minh (04:00) nhé!”",
   },
   2: {
     night: 2,
@@ -56,11 +66,15 @@ export interface GameUIHandlers {
   onReturnMenu: () => void;
   onToggleMute: () => void;
   onChangeSettings: (next: GameSettings) => void;
+  onOpenLeaderboard: () => void;
+  onSubmitLeaderboard: (name: string) => Promise<void>;
 }
 
 export interface HudDynamicView {
   interactPrompt: string | null;
   nearestArrow: { visible: boolean; x: number; y: number; angleDeg: number };
+  shadeArrow: { visible: boolean; x: number; y: number; angleDeg: number };
+  shadeSpawnActive: boolean;
   windWarning: boolean;
   windActive: boolean;
   windDirDeg: number;
@@ -89,10 +103,13 @@ export class GameUI {
   private readonly pauseBtn = el<HTMLButtonElement>("btn-pause-hud");
   private readonly moteLabelEl = el<HTMLElement>("mote-slots-label");
   private readonly moteSlotsContainer = el<HTMLElement>("mote-slots");
+  private readonly subtitleBoxEl = el<HTMLElement>("subtitle-box");
   private readonly dashEl = el<HTMLElement>("hud-dash");
   private readonly pulseEl = el<HTMLElement>("hud-pulse");
+  private readonly controlsEl = el<HTMLElement>("controls");
   private readonly interactPromptEl = el<HTMLElement>("interact-prompt");
   private readonly arrowEl = el<HTMLElement>("offscreen-arrow");
+  private readonly shadeArrowEl = el<HTMLElement>("shade-arrow");
 
   private readonly overlayEl = el<HTMLElement>("overlay");
   private readonly modalTitleEl = el<HTMLElement>("modal-title");
@@ -104,13 +121,26 @@ export class GameUI {
   private readonly sensInput = el<HTMLInputElement>("setting-sens");
   private readonly sensValEl = el<HTMLElement>("setting-sens-val");
   private readonly colorblindInput = el<HTMLInputElement>("setting-colorblind");
+  private readonly reduceMotionInput = el<HTMLInputElement>("setting-reduce-motion");
+  private readonly largeTextInput = el<HTMLInputElement>("setting-large-text");
   private readonly settingsMuteBtn = el<HTMLButtonElement>("btn-settings-mute");
+  private readonly keybindsListEl = el<HTMLElement>("keybinds-list");
+  private readonly keybindErrorEl = el<HTMLElement>("keybind-error");
+  private readonly resetKeybindsBtn = el<HTMLButtonElement>("btn-reset-keybinds");
+
+  private readonly lbSubmitBoxEl = el<HTMLElement>("leaderboard-submit-box");
+  private readonly lbNameInput = el<HTMLInputElement>("lb-name-input");
+  private readonly lbSaveBtn = el<HTMLButtonElement>("btn-lb-save");
+  private readonly lbSubmitMsgEl = el<HTMLElement>("lb-submit-msg");
+  private readonly lbListBoxEl = el<HTMLElement>("leaderboard-list-box");
   private readonly modalActionsEl = el<HTMLElement>("modal-actions");
 
   private readonly moteSlotDivs: HTMLDivElement[] = [];
+  private readonly keybindButtons = new Map<KeyAction, HTMLButtonElement>();
   private bannerTimeout: number | null = null;
   private returnFromSettings: "menu" | "pause" = "menu";
   private settingsOpen = false;
+  private listeningAction: KeyAction | null = null;
   private settings: GameSettings;
   private muted = false;
 
@@ -118,7 +148,10 @@ export class GameUI {
     initialSettings: GameSettings,
     private readonly handlers: GameUIHandlers
   ) {
-    this.settings = { ...initialSettings };
+    this.settings = {
+      ...initialSettings,
+      keybinds: { ...initialSettings.keybinds },
+    };
 
     for (let i = 0; i < DEFAULT_TUNING.capacity_max; i++) {
       const slot = document.createElement("div");
@@ -134,22 +167,109 @@ export class GameUI {
     this.volInput.addEventListener("input", () => {
       this.settings.volume = Number(this.volInput.value) / 100;
       this.syncSettingsInputs();
-      this.handlers.onChangeSettings({ ...this.settings });
+      this.emitSettingsChange();
     });
 
     this.sensInput.addEventListener("input", () => {
       this.settings.mouseSensitivity = Number(this.sensInput.value) / 100;
       this.syncSettingsInputs();
-      this.handlers.onChangeSettings({ ...this.settings });
+      this.emitSettingsChange();
     });
 
     this.colorblindInput.addEventListener("change", () => {
       this.settings.colorblindMode = this.colorblindInput.checked;
       this.syncSettingsInputs();
-      this.handlers.onChangeSettings({ ...this.settings });
+      this.emitSettingsChange();
+    });
+
+    this.reduceMotionInput.addEventListener("change", () => {
+      this.settings.reduceMotion = this.reduceMotionInput.checked;
+      this.syncSettingsInputs();
+      this.emitSettingsChange();
+    });
+
+    this.largeTextInput.addEventListener("change", () => {
+      this.settings.largeText = this.largeTextInput.checked;
+      this.syncSettingsInputs();
+      this.emitSettingsChange();
+    });
+
+    this.resetKeybindsBtn.addEventListener("click", () => {
+      this.listeningAction = null;
+      this.settings.keybinds = { ...DEFAULT_KEYBINDS };
+      this.keybindErrorEl.textContent = "";
+      this.syncSettingsInputs();
+      this.emitSettingsChange();
+    });
+
+    this.buildKeybindsGrid();
+
+    window.addEventListener(
+      "keydown",
+      (e) => {
+        if (!this.listeningAction || !this.settingsOpen) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const action = this.listeningAction;
+        const dup = findDuplicateKeybind(this.settings.keybinds, action, e.code);
+        if (dup) {
+          this.keybindErrorEl.textContent = `Phím ${formatKeyCode(e.code)} đang gán cho "${KEY_ACTION_LABELS[dup]}"!`;
+          this.listeningAction = null;
+          this.syncSettingsInputs();
+          return;
+        }
+        this.settings.keybinds[action] = e.code;
+        this.listeningAction = null;
+        this.keybindErrorEl.textContent = "";
+        this.syncSettingsInputs();
+        this.emitSettingsChange();
+      },
+      true
+    );
+
+    this.lbSaveBtn.addEventListener("click", async () => {
+      const check = validateLeaderboardName(this.lbNameInput.value);
+      if (!check.valid) {
+        this.lbSubmitMsgEl.textContent = check.error ?? "Tên không hợp lệ.";
+        return;
+      }
+      this.lbSaveBtn.disabled = true;
+      this.lbSubmitMsgEl.textContent = "Đang lưu...";
+      try {
+        await this.handlers.onSubmitLeaderboard(check.normalized);
+        this.lbSubmitMsgEl.textContent = "Đã lưu vào Bảng xếp hạng!";
+      } catch (err) {
+        this.lbSaveBtn.disabled = false;
+        this.lbSubmitMsgEl.textContent =
+          err instanceof Error ? err.message : "Không thể lưu điểm.";
+      }
     });
 
     this.syncSettingsInputs();
+  }
+
+  private emitSettingsChange(): void {
+    this.handlers.onChangeSettings({
+      ...this.settings,
+      keybinds: { ...this.settings.keybinds },
+    });
+  }
+
+  private buildKeybindsGrid(): void {
+    this.keybindsListEl.innerHTML = "";
+    this.keybindButtons.clear();
+    for (const action of Object.keys(DEFAULT_KEYBINDS) as KeyAction[]) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "modal-btn secondary keybind-btn";
+      btn.addEventListener("click", () => {
+        this.listeningAction = action;
+        this.keybindErrorEl.textContent = "";
+        this.syncSettingsInputs();
+      });
+      this.keybindsListEl.appendChild(btn);
+      this.keybindButtons.set(action, btn);
+    }
   }
 
   private syncSettingsInputs(): void {
@@ -158,7 +278,27 @@ export class GameUI {
     this.sensInput.value = String(Math.round(this.settings.mouseSensitivity * 100));
     this.sensValEl.textContent = `${this.settings.mouseSensitivity.toFixed(2)}x`;
     this.colorblindInput.checked = this.settings.colorblindMode;
+    this.reduceMotionInput.checked = this.settings.reduceMotion;
+    this.largeTextInput.checked = this.settings.largeText;
+
     document.body.classList.toggle("colorblind", this.settings.colorblindMode);
+    document.body.classList.toggle("reduce-motion", this.settings.reduceMotion);
+    document.body.classList.toggle("large-text", this.settings.largeText);
+
+    for (const [action, btn] of this.keybindButtons.entries()) {
+      const keyLabel =
+        this.listeningAction === action
+          ? "Nhấn phím..."
+          : formatKeyCode(this.settings.keybinds[action]);
+      btn.innerHTML = `<span>${KEY_ACTION_LABELS[action]}</span><strong>${keyLabel}</strong>`;
+    }
+
+    const kb = this.settings.keybinds;
+    this.controlsEl.innerHTML = `<strong>Điều khiển:</strong> ${formatKeyCode(kb.moveForward)}${formatKeyCode(kb.moveLeft)}${formatKeyCode(kb.moveBackward)}${formatKeyCode(kb.moveRight)} · ${formatKeyCode(kb.jump)}: Nhảy · ${formatKeyCode(kb.dash)}: Lướt · ${formatKeyCode(kb.interact)}: Nạp · ${formatKeyCode(kb.pulse)}: Tỏa sáng`;
+  }
+
+  isListeningKeybind(): boolean {
+    return this.listeningAction !== null;
   }
 
   setMuteLabel(muted: boolean): void {
@@ -181,8 +321,11 @@ export class GameUI {
 
   private clearActions(): void {
     this.settingsOpen = false;
+    this.listeningAction = null;
     this.modalActionsEl.innerHTML = "";
     this.settingsPanelEl.style.display = "none";
+    this.lbSubmitBoxEl.style.display = "none";
+    this.lbListBoxEl.style.display = "none";
   }
 
   isSettingsOpen(): boolean {
@@ -232,7 +375,48 @@ export class GameUI {
     }
     this.modalActionsEl.appendChild(picker);
 
+    this.addActionButton("Bảng xếp hạng", () => this.handlers.onOpenLeaderboard(), true);
     this.addActionButton("Cài đặt", () => this.showSettings("menu"), true);
+  }
+
+  showLeaderboard(entries: LeaderboardEntry[]): void {
+    this.hudRoot.classList.add("hidden");
+    this.overlayEl.classList.add("open");
+    this.clearActions();
+
+    this.modalTitleEl.textContent = "Bảng xếp hạng";
+    this.modalSubtitleEl.textContent = "Top 10 người giữ đèn xuất sắc nhất";
+    this.modalBodyEl.textContent = entries.length === 0 ? "Chưa có thành tích nào được lưu." : "";
+
+    if (entries.length > 0) {
+      const table = document.createElement("table");
+      table.className = "lb-table";
+      table.innerHTML =
+        "<thead><tr><th>#</th><th>Tên</th><th>Điểm</th><th>Đêm</th><th>Seed</th></tr></thead>";
+      const tbody = document.createElement("tbody");
+      entries.forEach((entry, idx) => {
+        const tr = document.createElement("tr");
+        const cells = [
+          String(idx + 1),
+          entry.name,
+          String(entry.score),
+          `${entry.nights_won}/3`,
+          String(entry.seed),
+        ];
+        for (const text of cells) {
+          const td = document.createElement("td");
+          td.textContent = text;
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      this.lbListBoxEl.innerHTML = "";
+      this.lbListBoxEl.appendChild(table);
+      this.lbListBoxEl.style.display = "flex";
+    }
+
+    this.addActionButton("Quay lại", () => this.showMainMenu(), true);
   }
 
   showNightIntro(night: NightNumber, totalScore: number): void {
@@ -262,7 +446,7 @@ export class GameUI {
 
     this.modalTitleEl.textContent = "Tạm dừng";
     this.modalSubtitleEl.textContent = "Thời gian và sương đêm đang dừng lại";
-    this.modalBodyEl.textContent = "Nhấn Esc hoặc P để quay lại trò chơi bất cứ lúc nào.";
+    this.modalBodyEl.textContent = `Nhấn ${formatKeyCode(this.settings.keybinds.pause)} hoặc P để quay lại trò chơi bất cứ lúc nào.`;
 
     this.addActionButton("Tiếp tục", () => this.handlers.onResume());
     this.addActionButton("Chơi lại Đêm", () => this.handlers.onRestartNight(), true);
@@ -276,6 +460,7 @@ export class GameUI {
     this.clearActions();
     this.settingsOpen = true;
     this.settingsPanelEl.style.display = "flex";
+    this.keybindErrorEl.textContent = "";
     this.syncSettingsInputs();
     this.setMuteLabel(this.muted);
 
@@ -301,11 +486,18 @@ export class GameUI {
 
     const requiredLit = Math.ceil(DEFAULT_TUNING.win_ratio * params.lanternsTotal);
 
+    if (!params.won || (params.won && params.night === 3)) {
+      this.lbSubmitBoxEl.style.display = "flex";
+      this.lbSaveBtn.disabled = false;
+      this.lbSubmitMsgEl.textContent = "";
+    }
+
     if (params.won && params.night === 3) {
       this.modalTitleEl.textContent = "Bình Minh Đã Lên!";
       this.modalSubtitleEl.textContent = "Sống sót giữ sáng Quần đảo suốt 3 Đêm";
       this.modalBodyEl.textContent = `Mây đã giữ ${params.lanternsLit}/${params.lanternsTotal} đèn sáng đến bình minh (cần ≥ ${requiredLit})! Điểm Đêm 3: ${params.nightScore} · Tổng điểm chiến dịch: ${params.totalScore}.`;
       this.addActionButton("Chơi lại từ Đêm 1", () => this.handlers.onStartCampaign(1));
+      this.addActionButton("Bảng xếp hạng", () => this.handlers.onOpenLeaderboard(), true);
       this.addActionButton("Về menu chính", () => this.handlers.onReturnMenu(), true);
       return;
     }
@@ -325,8 +517,9 @@ export class GameUI {
       params.reason === "no_flames"
         ? "Mây đã mất hết Ngọn Lửa."
         : `Trời đã hừng đông nhưng chỉ còn ${params.lanternsLit}/${params.lanternsTotal} đèn sáng (cần ≥ ${requiredLit}).`;
-    this.modalBodyEl.textContent = `Điểm Đêm ${params.night}: ${params.nightScore}.`;
+    this.modalBodyEl.textContent = `Điểm Đêm ${params.night}: ${params.nightScore} · Tổng điểm đã thắng: ${params.totalScore}.`;
     this.addActionButton("Chơi lại Đêm", () => this.handlers.onRestartNight());
+    this.addActionButton("Bảng xếp hạng", () => this.handlers.onOpenLeaderboard(), true);
     this.addActionButton("Về menu chính", () => this.handlers.onReturnMenu(), true);
   }
 
@@ -405,6 +598,23 @@ export class GameUI {
       slot.classList.toggle("filled", i < snap.player.carried);
     }
 
+    // Accessibility Subtitles
+    const subtitleText =
+      snap.state === "playing"
+        ? buildAccessibilitySubtitle({
+            shadeSpawnActive: dyn.shadeSpawnActive,
+            windWarning: dyn.windWarning,
+            timeLeftSec: snap.time_left_s,
+            weakLanternCount: fuelStatus.weakCount,
+          })
+        : "";
+    if (subtitleText.length > 0) {
+      this.subtitleBoxEl.textContent = subtitleText;
+      this.subtitleBoxEl.classList.add("visible");
+    } else {
+      this.subtitleBoxEl.classList.remove("visible");
+    }
+
     // Zone 5: Dash & Pulse Cooldowns
     if (snap.player.charm_s > 0) {
       this.dashEl.textContent = "Miễn hồi (Bùa Gió)";
@@ -436,7 +646,7 @@ export class GameUI {
       this.interactPromptEl.classList.remove("visible");
     }
 
-    // Zone 7: Off-screen Nearest Unlit Lantern Arrow
+    // Zone 7: Off-screen Arrows (Lantern & Shade Spawn)
     if (dyn.nearestArrow.visible && snap.state === "playing") {
       this.arrowEl.style.left = `${dyn.nearestArrow.x}px`;
       this.arrowEl.style.top = `${dyn.nearestArrow.y}px`;
@@ -444,6 +654,15 @@ export class GameUI {
       this.arrowEl.classList.add("visible");
     } else {
       this.arrowEl.classList.remove("visible");
+    }
+
+    if (dyn.shadeArrow.visible && dyn.shadeSpawnActive && snap.state === "playing") {
+      this.shadeArrowEl.style.left = `${dyn.shadeArrow.x}px`;
+      this.shadeArrowEl.style.top = `${dyn.shadeArrow.y}px`;
+      this.shadeArrowEl.style.transform = `rotate(${dyn.shadeArrow.angleDeg}deg)`;
+      this.shadeArrowEl.classList.add("visible");
+    } else {
+      this.shadeArrowEl.classList.remove("visible");
     }
   }
 }

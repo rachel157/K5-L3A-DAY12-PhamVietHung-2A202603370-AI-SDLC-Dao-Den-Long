@@ -185,3 +185,29 @@ export function computeBenchCameraPos(elapsedSec) {
   const theta = (elapsedSec / 15) * Math.PI * 2;
   return [30 * Math.cos(theta), 15, -30 * Math.sin(theta)];
 }
+
+/**
+ * Builds accessibility subtitle line for key gameplay cues:
+ * Shade spawn, upcoming wind gust, final 10s countdown, and weak lanterns (< 30 fuel).
+ */
+export function buildAccessibilitySubtitle({
+  shadeSpawnActive,
+  windWarning,
+  timeLeftSec,
+  weakLanternCount,
+}) {
+  const parts = [];
+  if (shadeSpawnActive) {
+    parts.push("[Bóng Mực vừa xuất hiện]");
+  }
+  if (windWarning) {
+    parts.push("[Gió mạnh sắp thổi]");
+  }
+  if (timeLeftSec > 0 && timeLeftSec <= 10) {
+    parts.push(`[Còn ${Math.ceil(timeLeftSec)}s cuối!]`);
+  }
+  if (weakLanternCount > 0) {
+    parts.push(`[${weakLanternCount} đèn dưới 30% dầu]`);
+  }
+  return parts.join(" · ");
+}
