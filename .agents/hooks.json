@@ -1,0 +1,11 @@
+{
+  "stop-test-gate": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node ./scripts/stop-test-gate.mjs",
+        "timeout": 30
+      }
+    ]
+  }
+}
