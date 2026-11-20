@@ -24,10 +24,10 @@ Run this procedure at the end of every phase before committing proof or creating
    ```
    Verify 0 failures across all `tests/*.test.mjs` files.
 
-3. **Determinism check (two identical headless runs):**
+3. **Determinism check (two identical headless runs across bash/PowerShell):**
    ```bash
-   npm run headless -- --seed 7 --ticks 20
-   npm run headless -- --seed 7 --ticks 20
+   node dist-cli/cli/headless.js --seed 7 --ticks 20
+   node dist-cli/cli/headless.js --seed 7 --ticks 20
    ```
    Confirm both runs produce byte-for-byte identical output.
 

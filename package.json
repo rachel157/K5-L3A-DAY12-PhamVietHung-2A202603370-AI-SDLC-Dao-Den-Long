@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "description": "Dao Den Long — Day 12 AI SDLC 3D game & deterministic headless simulation",
   "scripts": {
     "dev": "vite",
@@ -10,7 +13,7 @@
     "build:cli": "tsc -p tsconfig.cli.json",
     "build:web": "tsc -p tsconfig.web.json && vite build",
     "build": "npm run build:cli && npm run build:web",
-    "test": "npm run build:cli && node --test tests/*.test.mjs",
+    "test": "npm run build:cli && node --test",
     "headless": "node dist-cli/cli/headless.js"
   },
   "dependencies": {

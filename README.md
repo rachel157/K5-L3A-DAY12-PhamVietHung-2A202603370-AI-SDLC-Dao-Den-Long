@@ -13,7 +13,7 @@
 
 ## Cài đặt & Chạy game 3D (3 lệnh)
 
-Yêu cầu: **Node.js >= 18** (khuyến nghị Node 22; hoạt động đồng nhất trên macOS, Linux và Windows).
+Yêu cầu: **Node.js `^20.19.0 || >=22.12.0`** (khuyến nghị Node 22 LTS theo yêu cầu của Vite 8; bản biên dịch `dist-cli/` chạy được từ Node 18; hoạt động đồng nhất trên macOS, Linux và Windows).
 
 ```bash
 npm install
@@ -34,8 +34,8 @@ npm run preview
 - **Chạy chế độ headless (tất định theo seed):**
   ```bash
   npm run headless
-  # hoặc truyền tham số tường minh:
-  npm run headless -- --seed 7 --ticks 20 --dt 0.05
+  # hoặc truyền tham số trực tiếp (chạy đồng nhất trên bash, zsh, cmd và PowerShell):
+  node dist-cli/cli/headless.js --seed 7 --ticks 20 --dt 0.05
   ```
 
 ---

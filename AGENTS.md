@@ -1,11 +1,11 @@
 # Đảo Đèn Lồng — Agent Guidelines
 
-Game 3D + chế độ headless deterministic (TypeScript + Vite + Three.js + Node >= 18).
+Game 3D + chế độ headless deterministic (TypeScript + Vite + Three.js + Node ^20.19.0 || >=22.12.0; compiled `dist-cli/` runs on Node 18+).
 
 ## Commands
 - `npm install` — install dependencies
 - `npm run build` — compile CLI (`dist-cli/`) and web (`dist/`)
-- `npm test` — compile CLI/core and run `node --test tests/*.test.mjs`
+- `npm test` — compile CLI/core and run `node --test`
 - `npm run headless` — run headless CLI (`node dist-cli/cli/headless.js`)
 - `npm run dev` / `npm run preview` — run 3D web app locally
 

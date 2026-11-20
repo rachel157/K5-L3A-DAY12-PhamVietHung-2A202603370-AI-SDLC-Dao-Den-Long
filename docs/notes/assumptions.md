@@ -8,8 +8,8 @@
 
 | Hạng mục | Quyết định / Giả định | Lý do | Trạng thái |
 |---|---|---|---|
-| Ngôn ngữ & Engine | TypeScript + Vite + Three.js + Node.js >= 18 (`node:test`) | Chạy đồng nhất macOS/Linux/Windows; tách `src/core/` thuần cho chế độ headless tất định; build tĩnh `dist/` cho Release `v1.0.0` | Đã áp dụng |
-| Tương thích Node | Biên dịch CLI sang `dist-cli/` bằng `tsc` (`NodeNext`) | Không phụ thuộc `--experimental-strip-types` của riêng Node 22 | Đã áp dụng |
+| Ngôn ngữ & Engine | TypeScript + Vite 8 + Three.js + Node.js (`^20.19.0 \|\| >=22.12.0` để build Vite; `dist-cli/` chạy từ Node 18) | Chạy đồng nhất macOS/Linux/Windows; tách `src/core/` thuần cho chế độ headless tất định; build tĩnh `dist/` cho Release `v1.0.0` | Đã áp dụng |
+| Tương thích Node | Biên dịch CLI sang `dist-cli/` bằng `tsc` (`NodeNext`); dùng `node --test` auto-discovery thay vì phụ thuộc glob shell | Không phụ thuộc `--experimental-strip-types` của Node 22 hay glob expansion của bash/Node 21+ | Đã áp dụng |
 | Tham số mặc định headless CP0 | `--seed 1 --ticks 10 --dt 0.05` | Cho phép `npm run headless` chạy ngay không cần đối số trong CI và smoke check; sẽ cập nhật theo Test Contract khi nhận PRD-0 | Tạm thời (CP0) |
 
 ---
