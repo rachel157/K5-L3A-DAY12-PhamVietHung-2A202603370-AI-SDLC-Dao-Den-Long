@@ -22,6 +22,23 @@
 
 ---
 
-## Phase 1 … Phase 4
+## Phase 1 (PRD-0 & Test Contract v1.0)
+
+- **Công cụ AI:** Google Antigravity (model Gemini 4 Hydrogen, kèm 1 subagent builder-check và 1 subagent code-reviewer `pro`).
+- **Công việc đã giao AI:**
+  1. Tách mọi chỗ mơ hồ của PRD-0 & Test Contract v1.0 vào `docs/notes/assumptions.md` trước khi viết code.
+  2. Thiết kế & lập kế hoạch triển khai `game.contract.json`, lõi mô phỏng 60 Hz (`src/core/game.ts`), CLI headless (`src/cli/headless.ts`), cảnh 3D + Web Audio + HUD (`src/web/`, `index.html`), bộ 21 unit/contract/CLI/hook tests.
+  3. Kiểm chứng trên bản clone sạch và sửa lỗi theo đánh giá độc lập.
+- **Lỗi / vấn đề phát hiện & cách xử lý:**
+  - *Builder check subagent* cảnh báo bẫy số thực IEEE-754 (`3.0 - 180*(1/60) > 0` làm choáng thành 181 tick thay vì 180 tick), mâu thuẫn với test CP0 cũ (`tests/cp0-packaging.test.mjs`) khi CLI Phase 1 bắt buộc `--night 1 --out`, và rủi ro `interact` giữ nguyên trạng thái `true` theo zero-order hold → Đã dùng `TIMER_EPS = 1e-9` cho mọi timer, làm tròn `round3` chỉ lúc ghi JSONL, kiểm tra `all_lit` trong lúc `interact`, và cập nhật đồng bộ `SKILL.md` / `ci.yml` / `cp0-packaging.test.mjs`.
+  - *Tự phát hiện khi thiết kế camera 3D:* Ở `cam_yaw_deg = 0`, công thức xoay Contract §C định nghĩa `+Z` là hướng tiến và `+X` là bên trái màn hình; đã chỉnh ánh xạ phím `A`/`D` (`+1`/`-1`) để điều khiển `WASD` khớp đúng góc camera.
+- **Chiến lược tiết kiệm token:**
+  - Tiếp tục thực thi inline (`executing-plans`) qua 5 task thay vì gọi subagent implementer riêng cho từng task; gộp bước cập nhật tài liệu & kiểm chứng sạch.
+  - Không dùng thư viện âm thanh/asset ngoài, tổng hợp nhẹ bằng Web Audio API (~95 dòng).
+- **Ước tính token/chi phí CP0 + Phase 1:** Ước tính Phase 1 sử dụng ~12–16 lượt gọi công cụ chính + 2 subagent review (`builder-check` + `final code-review`), tổng ước lượng khoảng 90k–150k tokens (bao gồm context đọc diff/spec; đối chiếu chính xác qua dashboard tài khoản AI).
+
+---
+
+## Phase 2 … Phase 4
 
 *Sẽ ghi bổ sung sau mỗi phase.*
