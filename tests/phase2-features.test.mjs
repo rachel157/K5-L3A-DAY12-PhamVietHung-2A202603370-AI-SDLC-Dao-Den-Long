@@ -288,10 +288,13 @@ test("full 21,600-tick Night 3 headless run completes well under 30 seconds", ()
   const lines = runHeadlessSimulation({
     seed: 7,
     night: 3,
+    scenario: { player: { flames: 9999 }, wind_enabled: true },
     maxTicks: 21600,
     snapshotEvery: 60,
   });
   const elapsedMs = performance.now() - startMs;
   assert.ok(elapsedMs < 30000, `21,600-tick run took ${elapsedMs}ms (>= 30s limit)`);
-  assert.equal(lines[lines.length - 1].type, "end");
+  const end = lines[lines.length - 1];
+  assert.equal(end.type, "end");
+  assert.equal(end.ticks, 21600);
 });

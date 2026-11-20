@@ -259,7 +259,7 @@ test("headless CLI supports Nights 2 and 3 deterministically and parses Contract
     n3ScenPath,
     JSON.stringify({
       player: {
-        pos: [0, 0, 0],
+        pos: [0, 0, -20],
         carried: 3,
         flames: 3,
         invuln_ticks: 10,

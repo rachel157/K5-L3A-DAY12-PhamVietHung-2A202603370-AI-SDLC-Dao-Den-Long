@@ -41,6 +41,18 @@ test("Night 1, 2, 3 map configs match Ticket-02 counts and coordinates", () => {
   assert.equal(n3.shadeMax, 10);
   assert.equal(n3.shadeIntervalTicks, 360);
   assert.equal(n3.hasWind, true);
+
+  for (const [n, cfg] of [
+    [1, n1],
+    [2, n2],
+    [3, n3],
+  ]) {
+    assert.equal(
+      getGroundY(n, cfg.spawnPos[0], cfg.spawnPos[2]),
+      cfg.spawnPos[1],
+      `Night ${n} spawnPos must stand on valid ground`
+    );
+  }
 });
 
 test("Night 2 ground includes islands A, B, bamboo bridge, and void elsewhere", () => {

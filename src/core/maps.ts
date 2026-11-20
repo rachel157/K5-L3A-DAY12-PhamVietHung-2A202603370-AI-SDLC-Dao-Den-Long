@@ -164,7 +164,7 @@ export function getNightMapConfig(night: NightNumber): NightMapConfig {
   return {
     night: 3,
     durationS: 360,
-    spawnPos: [0, 0, 0],
+    spawnPos: [0, 0, -20],
     lanterns: buildLanternList([
       [0, 6, 6],
       [18, 3, 10],
