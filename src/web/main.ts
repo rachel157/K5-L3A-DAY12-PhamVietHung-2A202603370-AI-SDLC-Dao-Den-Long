@@ -10,6 +10,11 @@ import {
 } from "../core/game.js";
 import type { GameEvent, GameWorld } from "../core/types.js";
 import { GameAudio } from "./audio.js";
+import {
+  applyShadeFacing,
+  bindHudActionButton,
+  handleControlKeyDown,
+} from "./visualHelpers.js";
 
 interface LanternVisual {
   group: THREE.Group;
@@ -474,7 +479,7 @@ function start(): void {
         scene.add(mesh);
       }
       mesh.position.set(shade.pos[0], 0, shade.pos[2]);
-      mesh.lookAt(world.player.pos[0], 0, world.player.pos[2]);
+      applyShadeFacing(mesh, shade.pos, world.player.pos, shade.state === "stunned", nowSec);
       const { bodyMat, eyeMat } = mesh.userData as {
         bodyMat: THREE.MeshStandardMaterial;
         eyeMat: THREE.MeshBasicMaterial;
@@ -483,12 +488,10 @@ function start(): void {
         bodyMat.color.setHex(0x3a486e);
         bodyMat.emissive.setHex(0x5b76ad);
         eyeMat.color.setHex(0x9bd4ff);
-        mesh.rotation.z = Math.sin(nowSec * 22) * 0.15;
       } else {
         bodyMat.color.setHex(0x160a24);
         bodyMat.emissive.setHex(0x2c0d45);
         eyeMat.color.setHex(0xd94fff);
-        mesh.rotation.z = 0;
       }
     }
     for (const [id, mesh] of shadeMeshes.entries()) {
@@ -549,7 +552,7 @@ function start(): void {
       btnMute.textContent = muted ? "Âm thanh: Tắt (M)" : "Âm thanh: Bật (M)";
       return;
     }
-    pressedKeys.add(code);
+    handleControlKeyDown(e, pressedKeys);
   });
 
   window.addEventListener("keyup", (e) => {
@@ -585,12 +588,12 @@ function start(): void {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  btnMute.addEventListener("click", () => {
+  bindHudActionButton(btnMute, () => {
     const muted = audio.toggleMute();
     btnMute.textContent = muted ? "Âm thanh: Tắt (M)" : "Âm thanh: Bật (M)";
   });
-  btnRestartHud.addEventListener("click", restartGame);
-  btnPlayAgain.addEventListener("click", restartGame);
+  bindHudActionButton(btnRestartHud, restartGame);
+  bindHudActionButton(btnPlayAgain, restartGame);
 
   let accumulator = 0;
   let lastMs = performance.now();

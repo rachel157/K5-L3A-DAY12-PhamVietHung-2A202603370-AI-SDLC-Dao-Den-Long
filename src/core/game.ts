@@ -192,12 +192,16 @@ export function createGameWorld(options: {
   const moteCounter = { value: 1 };
   if (scenario?.motes !== undefined) {
     for (const item of scenario.motes) {
+      if (!Array.isArray(item) && item.id) {
+        usedMoteIds.add(item.id);
+      }
+    }
+    for (const item of scenario.motes) {
       if (Array.isArray(item)) {
         const id = allocateId("M", moteCounter, usedMoteIds);
         motes.push({ id, pos: [item[0], item[1], item[2]] });
       } else {
         const id = item.id ?? allocateId("M", moteCounter, usedMoteIds);
-        usedMoteIds.add(id);
         motes.push({ id, pos: [item.pos[0], item.pos[1], item.pos[2]] });
       }
     }
@@ -213,8 +217,12 @@ export function createGameWorld(options: {
   const shadeCounter = { value: 1 };
   if (scenario?.shades !== undefined) {
     for (const item of scenario.shades) {
+      if (item.id) {
+        usedShadeIds.add(item.id);
+      }
+    }
+    for (const item of scenario.shades) {
       const id = item.id ?? allocateId("S", shadeCounter, usedShadeIds);
-      usedShadeIds.add(id);
       const state = item.state ?? "chase";
       shades.push({
         id,

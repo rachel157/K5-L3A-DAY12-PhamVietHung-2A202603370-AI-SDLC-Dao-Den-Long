@@ -68,14 +68,17 @@ test("zero-order hold persists absent fields and edge-triggers interact only on 
   const lines = runHeadlessSimulation({
     seed: 1,
     scenario: {
-      player: { pos: [0, 0, 24], carried: 3, flames: 3 },
+      player: { pos: [0, 0, 25], carried: 5, flames: 3 },
       random_motes: false,
       random_shades: false,
-      lanterns: [{ id: "L1", pos: [0, 0, 25], deposited: 0 }],
+      lanterns: [
+        { id: "L1", pos: [0, 0, 24], deposited: 1 },
+        { id: "L2", pos: [0, 0, 26], deposited: 0 },
+      ],
     },
     frames: [
       { tick: 0, interact: true },
-      // tick 1 keeps interact: true (no new edge trigger), tick 2 resets to false, tick 3 re-triggers
+      // tick 1 omits interact -> zero-order hold keeps true, so L2 must NOT receive a deposit on tick 2
       { tick: 2, interact: false },
       { tick: 3, interact: true },
     ],
@@ -83,11 +86,13 @@ test("zero-order hold persists absent fields and edge-triggers interact only on 
     snapshotEvery: 10,
   });
   const deposits = lines.filter((l) => l.type === "event" && l.name === "deposit");
-  assert.equal(deposits.length, 1);
+  assert.equal(deposits.length, 2);
   assert.equal(deposits[0].tick, 1);
-  assert.deepEqual(deposits[0].data, { lantern_id: "L1", amount: 3, deposited: 3 });
+  assert.deepEqual(deposits[0].data, { lantern_id: "L1", amount: 2, deposited: 3 });
+  assert.equal(deposits[1].tick, 4);
+  assert.deepEqual(deposits[1].data, { lantern_id: "L2", amount: 3, deposited: 3 });
   const litEvents = lines.filter((l) => l.type === "event" && l.name === "lantern_lit");
-  assert.equal(litEvents.length, 1);
+  assert.equal(litEvents.length, 2);
 });
 
 test("scenario patches lanterns by id without emitting events or score and suppresses random spawns", () => {
@@ -222,14 +227,19 @@ test("lit lanterns repel chase and stunned shades outside safe_radius (4.5m) whi
         { id: "L1", pos: [0, 0, 25], lit: true },
         { id: "L2", pos: [20, 0, 0], lit: false },
       ],
-      shades: [{ id: "S1", pos: [0, 0, 27] }],
+      shades: [
+        { id: "S1", pos: [0, 0, 27], state: "chase" },
+        { id: "S2", pos: [0, 0, 26], state: "stunned" },
+      ],
     },
     maxTicks: 5,
     snapshotEvery: 1,
   });
   const snap1 = lines.find((l) => l.type === "snapshot" && l.tick === 1);
-  const distFromLit = Math.hypot(snap1.shades[0].pos[0] - 0, snap1.shades[0].pos[2] - 25);
-  assert.ok(distFromLit >= 4.499, `shade inside lit safe_radius: ${distFromLit}`);
+  const distChase = Math.hypot(snap1.shades[0].pos[0] - 0, snap1.shades[0].pos[2] - 25);
+  const distStunned = Math.hypot(snap1.shades[1].pos[0] - 0, snap1.shades[1].pos[2] - 25);
+  assert.ok(distChase >= 4.499, `chase shade inside lit safe_radius: ${distChase}`);
+  assert.ok(distStunned >= 4.499, `stunned shade inside lit safe_radius: ${distStunned}`);
   assert.equal(lines.some((l) => l.type === "event" && l.name === "player_hit"), false);
 
   // Unlit lantern at [20, 0, 0] does NOT repel shade
@@ -246,6 +256,21 @@ test("lit lanterns repel chase and stunned shades outside safe_radius (4.5m) whi
     snapshotEvery: 10,
   });
   assert.equal(unlitLines.some((l) => l.type === "event" && l.name === "player_hit"), true);
+});
+
+test("scenario auto-allocated shade and mote IDs never collide with later explicit IDs", () => {
+  const world = createGameWorld({
+    seed: 1,
+    scenario: {
+      random_motes: false,
+      random_shades: false,
+      motes: [{ pos: [1, 0, 0] }, { id: "M1", pos: [2, 0, 0] }],
+      shades: [{ pos: [10, 0, 0] }, { id: "S1", pos: [20, 0, 0] }],
+    },
+  });
+  const snap = toSnapshot(world);
+  assert.equal(new Set(snap.motes.map((m) => m.id)).size, 2);
+  assert.equal(new Set(snap.shades.map((s) => s.id)).size, 2);
 });
 
 test("shade hit drops floor(carried * hit_drop_ratio), triggers invuln_s, and loses at 0 flames", () => {
