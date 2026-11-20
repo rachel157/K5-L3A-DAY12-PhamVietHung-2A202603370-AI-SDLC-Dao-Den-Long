@@ -30,11 +30,19 @@
 
 ---
 
-## Phase 2 (Ticket-02) — *Chờ phát hành*
+## Phase 2 (Ticket-02 — "Ba hòn đảo", Contract v1.1)
 
-| ID Yêu cầu | Thay đổi so với Phase 1 | Giả định cập nhật | Ảnh hưởng test cũ | Trạng thái |
+| ID Yêu cầu | Thay đổi so với Phase 1 / Chỗ mơ hồ | Giả định áp dụng & Lý do | Ảnh hưởng test cũ | Trạng thái |
 |---|---|---|---|---|
-| — | Chờ Ticket-02 | — | — | Chưa phát hành |
+| P2-01 | Đổi chuẩn toàn bộ hằng số tuning & tọa độ góc từ `+X` CCW (`x=R cos θ, z=R sin θ`) | Kiểm chứng từ Đêm 3 (`z > 0` tại `20°..160°` và dốc `30°/150°`) khớp chính xác `x = R*cos(θ), z = R*sin(θ)`. Nhảy dùng đúng `7.0 m/s`, trọng lực `-20 m/s²`. | Sửa test Phase 1 dùng số cũ (`carry_capacity=5`, `lantern_cost=3`, `pickup_radius=1.5`, `safe_radius=4.5`, `pulse_stun_s=3`, ...) sang số chuẩn Ticket-02. | Chờ duyệt thiết kế |
+| P2-02 | Tăng tốc / dừng `≤ 0.1 s`, Lướt `14 m/s` (`12` tick) & Bục nhảy Đêm 2/3 | Đổi vận tốc ngang tức thời mỗi tick (`1/60 s ≈ 0.017 s ≤ 0.1 s`), hồi chiêu Lướt `90` tick tính từ lúc bắt đầu lướt. Nếu đang bay từ bục nhảy mà Lướt, tạm áp vận tốc lướt 12 tick rồi khôi phục `launchVel` cho tới khi chạm đất. | Không làm hỏng test di chuyển Phase 1. | Chờ duyệt thiết kế |
+| P2-03 | Đổi công thức tính điểm (`+10` mỗi đom đóm **nạp**, `+100`/đèn, `+5`/Bóng trúng Pulse, `+2`/giây, `+50`/Ngọn Lửa) | Trong `game.contract.json`, `score.per_mote` giữ `10` nhưng cộng khi **nạp** (`deposit`) thay vì khi nhặt (`mote_picked`) để tránh farm điểm từ đom đóm rơi/Pulse. | Cập nhật test Phase 1 vốn assert `+10` lúc nhặt và `+200` lúc thắp đèn. | Chờ duyệt thiết kế |
+| P2-04 | Đom đóm `20` lúc tick 0, trần `30`, sinh tại `240, 480, ...` & đom đóm rơi (`ttl=480`) | Mảng `motes` phân biệt `kind: "random"` (`ttl_s: null`) và `kind: "dropped"` (`ttl_s` đếm từ `8.0s`). Đom đóm rơi ở vành `1.5–2.5m` quanh Mây (snap lên mặt đất hợp lệ gần Mây để không rơi xuống vực Đêm 2 hay kẹt tháp chuông), nhặt được từ tick sau (`bornTick < tick`). | Thay quy tắc Phase 1 (đom đóm rơi tan biến). | Chờ duyệt thiết kế |
+| P2-05 | Bóng Mực 5 trạng thái (`spawning`, `wander`, `chase`, `recoil`, `stunned`) & vùng an toàn `6 m` | Đêm 1–3 tại tick 0 không có Bóng Mực mặc định; sinh `2` con tại tick `300`, sau đó mỗi `480/420/360` tick ở trạng thái `"spawning"` (`30` ticks). Bóng trong `scenario` mặc định `"chase"` nếu `dist ≤ 12m`, `"wander"` nếu `> 12m`. Đèn vừa thắp đẩy Bóng bên trong ra mép `6m` trong tối đa `30` tick (`evadeTicks`) và không gây sát thương lúc đó; Bóng bên ngoài bị chặn sau bước 8. Đêm 3 dốc nối kín mép `s=23.85..30` và trượt mép theo tách trục/tiếp tuyến. | Cập nhật test Phase 1 vốn dùng `safe_radius=4.5`, `stun=180` ticks (`120` ticks trong Ticket-02) và 3 Bóng Mực tick 0. | Chờ duyệt thiết kế |
+| P2-06 | `Pulse` tâm `(x, y + 0.8, z)`, khoảng cách **3D** ≤ `5 m`, đẩy `4 m` trong `15` tick đầu; tương tác đèn `|dy| ≤ 1.5 m` | Tính 3D `hypot(dx, dy, dz) <= 5` từ `(px, py+0.8, pz)` tới `shade.pos` (`y = groundY + 0.8`). Đẩy lùi `4/15` m/tick trong 15 tick đầu, dừng nếu chạm vách đứng/tháp chuông/mép đảo. Tương tác đèn kiểm tra `XZ ≤ 2.0m && |dy| ≤ 1.5m` (để `L1` tầng 2 Đêm 3 không bị nạp từ tầng 1). | Cập nhật test `pulse` dùng khoảng cách 3D và 120 tick stun. | Chờ duyệt thiết kế |
+| P2-07 | Rơi khỏi đảo (`Y < -10`) & `player_hit` `by: "fall"` | Khi `Y < -10` (một lần): `-1` Ngọn Lửa, mất toàn bộ `carried`, ghi `player_hit { by: "fall", flames, dropped: 0, lost }`. Nếu `flames > 0`: chờ `60` tick (chặn nhặt/nạp/pulse/chạm), khi `respawnTicks` về `0` đặt về `(0,0,0)`, `vel=[0,0,0]`, `invuln=true` (`90` tick) và chạy tiếp bước đó. | `fall_enabled` đổi từ `false` -> `true`. | Chờ duyệt thiết kế |
+| P2-08 | `Gió Lạc` (`idle/chase/flee/removed`), `Bùa Gió` (`C1, C2`) & Gió Mạnh Đêm 3 | Gió Lạc sinh 1 con mỗi tick `1200, 2400, ...` (tối đa 2 con `state !== "removed"`), giữ `"removed"` trong snapshot `drifters` để test đối chiếu được. `scenario.drifters` và `scenario.charms` thay thế danh sách mặc định theo Contract v1.1. Gió mạnh Đêm 3 báo trước `120` tick trước mốc `1800k`, thổi `300` tick (`+X` CCW). | Tính năng mới Đêm 2–3. | Chờ duyệt thiết kế |
+| P2-09 | `night_start`, `paused`/`resumed`, `player.invuln` boolean, `end.state = "paused"` | `night_start { night }` phát ở tick `1` khi bắt đầu chạy bước. `player.invuln` là boolean (`invulnTicks > 0`). Khi `pause` bật, cập nhật `prevInput`, đóng băng `sim_tick`/timer/spawn/TTL và vẫn tăng `tick`; nếu kết thúc `--ticks` lúc đang pause thì `end.state = "paused"`. | Mở rộng schema Contract v1.0 -> v1.1. | Chờ duyệt thiết kế |
 
 ---
 
