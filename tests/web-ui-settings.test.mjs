@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import {
   DEFAULT_SETTINGS,
   loadSettings,
@@ -11,6 +13,7 @@ import {
   computeLanternVisualState,
   computeOffscreenLanternArrow,
   formatColorblindAlert,
+  getLowFuelHudStatus,
 } from "../src/web/visualHelpers.js";
 
 function createFakeStorage() {
@@ -165,4 +168,43 @@ test("computeLanternVisualState and formatColorblindAlert reflect squash/tears, 
   assert.equal(formatColorblindAlert("Đèn L1 cạn dầu!", false), "Đèn L1 cạn dầu!");
   assert.equal(formatColorblindAlert("Đèn L1 cạn dầu!", true), "⚠ Đèn L1 cạn dầu!");
   assert.equal(formatColorblindAlert("⚠ Đã cảnh báo", true), "⚠ Đã cảnh báo");
+});
+
+test("getLowFuelHudStatus triggers ⚠ warning on passive <30 fuel or active drain, and index.html colorblind overrides --crimson", () => {
+  const safe = getLowFuelHudStatus(
+    [
+      { lit: true, fuel: 30 },
+      { lit: false, fuel: 0 },
+    ],
+    [{ state: "chase" }],
+    30
+  );
+  assert.equal(safe.hasWarning, false);
+  assert.equal(safe.badgeText, null);
+
+  const passiveWeak = getLowFuelHudStatus(
+    [
+      { lit: true, fuel: 29.5 },
+      { lit: true, fuel: 80 },
+    ],
+    [{ state: "wander" }],
+    30
+  );
+  assert.equal(passiveWeak.hasWarning, true);
+  assert.equal(passiveWeak.weakCount, 1);
+  assert.equal(passiveWeak.drainCount, 0);
+  assert.ok(passiveWeak.badgeText?.startsWith("⚠"));
+
+  const draining = getLowFuelHudStatus(
+    [{ lit: true, fuel: 15 }],
+    [{ state: "drain" }, { state: "chase" }],
+    30
+  );
+  assert.equal(draining.hasWarning, true);
+  assert.equal(draining.drainCount, 1);
+  assert.ok(draining.badgeText?.startsWith("⚠"));
+
+  const html = fs.readFileSync(path.resolve("index.html"), "utf8");
+  assert.match(html, /body\.colorblind\s*\{[^}]*--crimson:\s*#ffffff/i);
+  assert.match(html, /id="hud-fuel-pill"/);
 });

@@ -105,6 +105,7 @@ function startApp(): void {
   let screenMode: "menu" | "intro" | "playing" | "paused" | "result" = "menu";
   let resultShown = false;
   let lastCountdownSec = -1;
+  const weakWarnedLanterns = new Set<string>();
   const pressedKeys = new Set<string>();
   const tmpVec = new THREE.Vector3();
 
@@ -122,6 +123,7 @@ function startApp(): void {
     camYawDeg = 0;
     resultShown = false;
     lastCountdownSec = -1;
+    weakWarnedLanterns.clear();
     clearInputs();
     screenMode = "intro";
     audio.stopBgm();
@@ -374,6 +376,21 @@ function startApp(): void {
             audio.playJump();
           }
           handleGameEvents(events);
+          const lowSixtieths = Math.round(world.tuning.low_fuel_threshold * TICKS_PER_SEC);
+          for (const lantern of world.lanterns) {
+            if (lantern.lit && lantern.fuelSixtieths < lowSixtieths) {
+              if (!weakWarnedLanterns.has(lantern.id)) {
+                weakWarnedLanterns.add(lantern.id);
+                audio.playFuelWarn();
+                ui.showBanner(
+                  `Đèn ${lantern.id} yếu dầu (<${world.tuning.low_fuel_threshold}%)!`,
+                  true
+                );
+              }
+            } else {
+              weakWarnedLanterns.delete(lantern.id);
+            }
+          }
         }
         accumulator -= DT_SEC;
       }

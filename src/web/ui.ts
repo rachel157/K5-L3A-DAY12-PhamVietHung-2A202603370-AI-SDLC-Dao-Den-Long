@@ -1,7 +1,11 @@
 import { DEFAULT_TUNING } from "../core/contract.js";
 import type { GameSnapshot, NightNumber } from "../core/types.js";
 import type { GameSettings } from "./settings.js";
-import { bindHudActionButton, formatColorblindAlert } from "./visualHelpers.js";
+import {
+  bindHudActionButton,
+  formatColorblindAlert,
+  getLowFuelHudStatus,
+} from "./visualHelpers.js";
 
 export type ScreenMode =
   | "menu"
@@ -75,6 +79,7 @@ export class GameUI {
   private readonly flamesEl = el<HTMLElement>("hud-flames");
   private readonly charmPillEl = el<HTMLElement>("hud-charm-pill");
   private readonly windPillEl = el<HTMLElement>("hud-wind-pill");
+  private readonly fuelPillEl = el<HTMLElement>("hud-fuel-pill");
   private readonly timeEl = el<HTMLElement>("hud-time");
   private readonly bannerEl = el<HTMLElement>("status-banner");
   private readonly lanternsEl = el<HTMLElement>("hud-lanterns");
@@ -361,6 +366,18 @@ export class GameUI {
       this.windPillEl.classList.remove("visible", "alert");
     }
 
+    const fuelStatus = getLowFuelHudStatus(
+      snap.lanterns,
+      snap.shades,
+      DEFAULT_TUNING.low_fuel_threshold
+    );
+    if (fuelStatus.hasWarning && fuelStatus.badgeText && snap.state === "playing") {
+      this.fuelPillEl.textContent = fuelStatus.badgeText;
+      this.fuelPillEl.classList.add("visible", "alert");
+    } else {
+      this.fuelPillEl.classList.remove("visible", "alert");
+    }
+
     // Zone 2: Clock
     const secs = Math.max(0, Math.ceil(snap.time_left_s));
     const mm = String(Math.floor(secs / 60)).padStart(2, "0");
@@ -372,7 +389,10 @@ export class GameUI {
     // Zone 3: Lanterns & Score
     const litCount = snap.lanterns.filter((l) => l.lit).length;
     const required = Math.ceil(DEFAULT_TUNING.win_ratio * snap.lanterns.length);
-    this.lanternsEl.textContent = `${litCount} / ${snap.lanterns.length} (≥${required})`;
+    this.lanternsEl.textContent = `${litCount} / ${snap.lanterns.length} (≥${required})${
+      fuelStatus.hasWarning && snap.state === "playing" ? " ⚠" : ""
+    }`;
+    this.lanternsEl.classList.toggle("alert", fuelStatus.hasWarning && snap.state === "playing");
     this.scoreEl.textContent = String(snap.score);
     this.totalScoreEl.textContent = String(dyn.totalScore);
 

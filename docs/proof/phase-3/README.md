@@ -7,10 +7,10 @@
 ## 1. Kết quả Build & Test Suite
 
 - **Lệnh build:** `npm run build` (`tsc -p tsconfig.cli.json` + `tsc -p tsconfig.web.json && vite build`)
-  - **Kết quả:** Thành công (`exit 0`), bundle Vite tạo `dist/index.html` (`10.28 kB`) và `dist/assets/index-BppuuMK3.js` (`635.81 kB`, built in `380ms`).
+  - **Kết quả:** Thành công (`exit 0`), bundle Vite tạo `dist/index.html` (`10.62 kB`) và `dist/assets/index-BPXqHdHI.js` (`636.81 kB`, built in `376ms`).
 - **Lệnh kiểm thử:** `npm test` (`npm run build:cli && node --test`)
-  - **Kết quả:** **50 / 50 subtests PASS (`0 fail`, `0 skipped`, `4956.0 ms`)** trên các nhóm kiểm thử:
-    - `tests/contract-sync.test.mjs` — `game.contract.json` (`contract_version: "1.2"`) khớp 1:1 với `DEFAULT_TUNING` (`fuel_max=100`, `fuel_decay_per_s=1`, `fuel_per_mote=10`, `relight_cost=5`, `win_ratio=0.6`, `drain_per_s=5`, `low_fuel_threshold=30`, `capacity_max=20`, `240/270/300s`, điểm `v1.2`), kèm `isLanternSafe`/`getDynamicCapacity`.
+  - **Kết quả:** **51 / 51 subtests PASS (`0 fail`, `0 skipped`, `4663.9 ms`)** trên các nhóm kiểm thử:
+    - `tests/contract-sync.test.mjs` — `game.contract.json` (`contract_version: "1.2"`) khớp 1:1 với `DEFAULT_TUNING` (`fuel_max=100`, `fuel_decay_per_s=1`, `fuel_per_mote=10`, `relight_cost=5`, `win_ratio=0.6`, `drain_per_s=5`, `low_fuel_threshold=30`, `capacity_max=20`, `240/270/300s`, điểm `v1.2`), kèm `round1` & `getDynamicCapacity`. (`isLanternSafe` nội bộ được kiểm qua `tests/phase3-features.test.mjs`.)
     - `tests/core-boundary.test.mjs` — `src/core/` thuần TypeScript 100% (không `three`, DOM, `process`, `Math.random`, `Date.now`).
     - `tests/maps-terrain.test.mjs` — Đêm 1/2/3 bản đồ, cầu tre, dốc kín mép `r=24`, Tháp Chuông và thời lượng mới `240/270/300s`.
     - `tests/core-game.test.mjs` — Hồi quy PRD-0 kết hợp các quy tắc mới (`fuel`, bỏ `all_lit` sang `dawn_survived`, điểm `v1.2`); các test điều chỉnh theo `[THAY THẾ v1.2]` được chú thích rõ và ghi tại `CHANGELOG.md` + `docs/notes/adr-001-lantern-fuel-and-win-condition.md`.

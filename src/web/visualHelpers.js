@@ -135,3 +135,43 @@ export function formatColorblindAlert(text, colorblindMode) {
   if (!colorblindMode || text.startsWith("⚠")) return text;
   return `⚠ ${text}`;
 }
+
+/**
+ * Summarizes weak (< lowFuelThreshold) or actively drained lanterns for persistent HUD alert pills.
+ */
+export function getLowFuelHudStatus(lanterns, shades, lowFuelThreshold) {
+  let weakCount = 0;
+  for (const lantern of lanterns) {
+    if (lantern.lit && lantern.fuel < lowFuelThreshold) {
+      weakCount += 1;
+    }
+  }
+  let drainCount = 0;
+  for (const shade of shades) {
+    if (shade.state === "drain") {
+      drainCount += 1;
+    }
+  }
+  if (drainCount > 0) {
+    return {
+      hasWarning: true,
+      weakCount,
+      drainCount,
+      badgeText: `⚠ ${drainCount} Bóng hút dầu`,
+    };
+  }
+  if (weakCount > 0) {
+    return {
+      hasWarning: true,
+      weakCount,
+      drainCount: 0,
+      badgeText: `⚠ ${weakCount} đèn yếu (<${lowFuelThreshold}%)`,
+    };
+  }
+  return {
+    hasWarning: false,
+    weakCount: 0,
+    drainCount: 0,
+    badgeText: null,
+  };
+}

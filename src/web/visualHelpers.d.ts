@@ -66,3 +66,16 @@ export function computeLanternVisualState(params: {
 }): LanternVisualState;
 
 export function formatColorblindAlert(text: string, colorblindMode: boolean): string;
+
+export interface LowFuelHudStatus {
+  hasWarning: boolean;
+  weakCount: number;
+  drainCount: number;
+  badgeText: string | null;
+}
+
+export function getLowFuelHudStatus(
+  lanterns: ReadonlyArray<{ lit: boolean; fuel: number }>,
+  shades: ReadonlyArray<{ state: string }>,
+  lowFuelThreshold: number
+): LowFuelHudStatus;
