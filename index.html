@@ -3,8 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Đảo Đèn Lồng — Đêm 1: Đảo Bến</title>
+    <title>Đảo Đèn Lồng — Ba Hòn Đảo</title>
     <style>
+      :root {
+        --sky: #0b0e1a;
+        --panel: rgba(11, 14, 26, 0.8);
+        --gold: #f2c14e;
+        --cream: #f5f1e6;
+        --crimson: #ff5a5f;
+        --charm: #7be3b5;
+        --wind: #8ecae6;
+        --muted: #b7bed8;
+      }
       * {
         box-sizing: border-box;
       }
@@ -15,186 +25,478 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background: #070b16;
-        color: #f6e7cb;
+        background: var(--sky);
+        color: var(--cream);
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         user-select: none;
       }
-      #hud {
+      .hud-card {
+        background: var(--panel);
+        border: 1px solid rgba(242, 193, 78, 0.35);
+        border-radius: 12px;
+        backdrop-filter: blur(6px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.48);
+      }
+      #hud-root.hidden {
+        display: none;
+      }
+      /* Zone 1: Top-Left (Night, Flames, Buffs) */
+      #hud-top-left {
         position: fixed;
         top: 16px;
         left: 16px;
+        padding: 12px 16px;
+        min-width: 230px;
         display: flex;
         flex-direction: column;
-        gap: 8px;
-        padding: 12px 16px;
-        min-width: 245px;
-        border-radius: 12px;
-        background: rgba(11, 13, 28, 0.78);
-        border: 1px solid rgba(255, 190, 92, 0.32);
-        backdrop-filter: blur(6px);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+        gap: 6px;
+        pointer-events: none;
       }
-      .hud-title {
+      #hud-night-title {
         font-weight: 700;
         font-size: 15px;
-        color: #ffcf75;
+        color: var(--gold);
         letter-spacing: 0.02em;
       }
-      .hud-row {
-        display: flex;
-        justify-content: space-between;
-        font-size: 13px;
-        gap: 16px;
+      #hud-flames {
+        font-size: 20px;
+        letter-spacing: 4px;
+        line-height: 1.1;
       }
-      .hud-label {
-        color: #b7bed8;
+      .flame-on {
+        color: var(--crimson);
+        text-shadow: 0 0 10px rgba(255, 90, 95, 0.65);
       }
-      .hud-val {
-        font-weight: 600;
-        color: #fff3db;
+      .flame-off {
+        color: rgba(245, 241, 230, 0.22);
       }
-      #controls {
-        position: fixed;
-        bottom: 16px;
-        left: 16px;
-        padding: 10px 14px;
-        border-radius: 10px;
-        background: rgba(11, 13, 28, 0.72);
-        border: 1px solid rgba(255, 190, 92, 0.2);
+      .hud-pill {
+        display: none;
+        padding: 3px 9px;
+        border-radius: 999px;
         font-size: 12px;
-        line-height: 1.5;
-        color: #d6dcf0;
+        font-weight: 600;
+        width: fit-content;
       }
-      #top-right {
+      .hud-pill.visible {
+        display: inline-block;
+      }
+      #hud-charm-pill {
+        background: rgba(123, 227, 181, 0.16);
+        border: 1px solid rgba(123, 227, 181, 0.55);
+        color: var(--charm);
+      }
+      #hud-wind-pill {
+        background: rgba(142, 202, 230, 0.16);
+        border: 1px solid rgba(142, 202, 230, 0.55);
+        color: var(--wind);
+      }
+      /* Zone 2: Top-Center (Clock + Banner) */
+      #hud-top-center {
+        position: fixed;
+        top: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        pointer-events: none;
+      }
+      #hud-time {
+        padding: 8px 20px;
+        font-size: 22px;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        color: var(--cream);
+        letter-spacing: 0.05em;
+      }
+      #hud-time.urgent {
+        color: var(--crimson);
+        border-color: rgba(255, 90, 95, 0.85);
+        animation: urgentPulse 0.75s ease-in-out infinite alternate;
+      }
+      @keyframes urgentPulse {
+        from {
+          transform: scale(1);
+          box-shadow: 0 0 8px rgba(255, 90, 95, 0.35);
+        }
+        to {
+          transform: scale(1.06);
+          box-shadow: 0 0 20px rgba(255, 90, 95, 0.8);
+        }
+      }
+      #status-banner {
+        padding: 7px 16px;
+        border-radius: 999px;
+        background: rgba(242, 193, 78, 0.22);
+        border: 1px solid rgba(242, 193, 78, 0.55);
+        color: var(--cream);
+        font-size: 13px;
+        font-weight: 600;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+        white-space: nowrap;
+      }
+      #status-banner.visible {
+        opacity: 1;
+      }
+      /* Zone 3: Top-Right (Lanterns, Score, Mute, Pause) */
+      #hud-top-right {
         position: fixed;
         top: 16px;
         right: 16px;
         display: flex;
+        flex-direction: column;
+        align-items: flex-end;
         gap: 8px;
+        pointer-events: none;
+      }
+      #hud-stats-box {
+        padding: 10px 16px;
+        display: flex;
+        gap: 18px;
+        align-items: center;
+      }
+      .stat-item {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+      }
+      .stat-label {
+        font-size: 11px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .stat-val {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--gold);
+        font-variant-numeric: tabular-nums;
+      }
+      #hud-actions {
+        display: flex;
+        gap: 8px;
+        pointer-events: auto;
       }
       button {
         cursor: pointer;
-        border: 1px solid rgba(255, 196, 107, 0.45);
-        background: rgba(24, 28, 52, 0.85);
-        color: #ffe3ae;
+        border: 1px solid rgba(242, 193, 78, 0.48);
+        background: rgba(20, 25, 45, 0.88);
+        color: var(--cream);
         padding: 8px 14px;
         border-radius: 8px;
         font-size: 13px;
         font-weight: 600;
       }
       button:hover {
-        background: rgba(255, 178, 71, 0.25);
+        background: rgba(242, 193, 78, 0.24);
       }
-      #status-banner {
+      /* Zone 4: Bottom-Center (10 Firefly Slots) */
+      #hud-bottom-center {
         position: fixed;
-        top: 18px;
+        bottom: 18px;
         left: 50%;
         transform: translateX(-50%);
-        padding: 8px 16px;
-        border-radius: 999px;
-        background: rgba(255, 178, 71, 0.2);
-        border: 1px solid rgba(255, 196, 107, 0.45);
-        color: #ffe5b4;
-        font-size: 13px;
-        opacity: 0;
-        transition: opacity 0.25s ease;
+        padding: 10px 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
         pointer-events: none;
       }
-      #status-banner.visible {
-        opacity: 1;
+      #mote-slots-label {
+        font-size: 12px;
+        color: var(--cream);
+        font-weight: 600;
       }
+      #mote-slots {
+        display: flex;
+        gap: 5px;
+      }
+      .mote-slot {
+        width: 18px;
+        height: 12px;
+        border-radius: 3px;
+        background: rgba(245, 241, 230, 0.14);
+        border: 1px solid rgba(242, 193, 78, 0.35);
+      }
+      .mote-slot.filled {
+        background: var(--gold);
+        box-shadow: 0 0 8px rgba(242, 193, 78, 0.75);
+      }
+      /* Zone 5: Bottom-Right (Dash & Pulse Cooldowns) */
+      #hud-bottom-right {
+        position: fixed;
+        bottom: 18px;
+        right: 16px;
+        padding: 10px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 195px;
+        pointer-events: none;
+      }
+      .cd-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 13px;
+      }
+      .cd-label {
+        color: var(--muted);
+      }
+      .cd-val {
+        font-weight: 700;
+        color: var(--gold);
+      }
+      .cd-val.dim {
+        color: var(--muted);
+      }
+      /* Controls mini-card bottom-left */
+      #controls {
+        position: fixed;
+        bottom: 18px;
+        left: 16px;
+        padding: 8px 12px;
+        font-size: 11.5px;
+        line-height: 1.45;
+        color: #d6dcf0;
+        max-width: 310px;
+        pointer-events: none;
+      }
+      /* Zone 6: Center Interact Prompt */
+      #interact-prompt {
+        position: fixed;
+        left: 50%;
+        bottom: 105px;
+        transform: translateX(-50%);
+        padding: 8px 18px;
+        border-radius: 999px;
+        background: rgba(242, 193, 78, 0.92);
+        color: #161108;
+        font-size: 14px;
+        font-weight: 800;
+        box-shadow: 0 6px 22px rgba(242, 193, 78, 0.45);
+        display: none;
+        pointer-events: none;
+      }
+      #interact-prompt.visible {
+        display: block;
+      }
+      /* Zone 7: Off-screen Nearest Unlit Lantern Arrow */
+      #offscreen-arrow {
+        position: fixed;
+        width: 36px;
+        height: 36px;
+        margin-left: -18px;
+        margin-top: -18px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        z-index: 5;
+      }
+      #offscreen-arrow.visible {
+        display: flex;
+      }
+      .arrow-shape {
+        width: 0;
+        height: 0;
+        border-top: 10px solid transparent;
+        border-bottom: 10px solid transparent;
+        border-left: 22px solid var(--gold);
+        filter: drop-shadow(0 0 8px rgba(242, 193, 78, 0.9));
+      }
+      /* Modal Overlay */
       #overlay {
         position: fixed;
         inset: 0;
         display: none;
         align-items: center;
         justify-content: center;
-        background: rgba(6, 8, 18, 0.74);
-        backdrop-filter: blur(5px);
-        z-index: 10;
+        background: rgba(6, 8, 18, 0.78);
+        backdrop-filter: blur(6px);
+        z-index: 20;
       }
       #overlay.open {
         display: flex;
       }
       .modal {
-        width: min(400px, 90vw);
-        padding: 24px 28px;
+        width: min(470px, 92vw);
+        padding: 26px 30px;
         border-radius: 16px;
         background: #11152c;
-        border: 1px solid rgba(255, 190, 92, 0.45);
+        border: 1px solid rgba(242, 193, 78, 0.48);
         text-align: center;
-        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
+        box-shadow: 0 22px 54px rgba(0, 0, 0, 0.7);
       }
       .modal h2 {
         margin: 0 0 8px;
-        font-size: 24px;
-        color: #ffd37d;
+        font-size: 26px;
+        color: var(--gold);
+      }
+      .modal-subtitle {
+        font-size: 13px;
+        color: var(--wind);
+        margin-bottom: 10px;
+        font-weight: 600;
       }
       .modal p {
         margin: 8px 0 18px;
-        color: #d6dcf0;
-        line-height: 1.5;
+        color: var(--cream);
+        line-height: 1.55;
         font-size: 14px;
       }
+      .modal-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        align-items: stretch;
+      }
       .modal-btn {
-        background: #e89b32;
-        color: #120d05;
+        background: var(--gold);
+        color: #141007;
         border: none;
-        padding: 10px 22px;
+        padding: 11px 20px;
         font-size: 15px;
+        font-weight: 700;
       }
       .modal-btn:hover {
-        background: #ffb44c;
+        background: #ffd372;
+      }
+      .modal-btn.secondary {
+        background: rgba(25, 32, 58, 0.9);
+        color: var(--cream);
+        border: 1px solid rgba(242, 193, 78, 0.4);
+      }
+      .modal-btn.secondary:hover {
+        background: rgba(242, 193, 78, 0.2);
+      }
+      .night-picker {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+      }
+      .night-picker button {
+        flex: 1;
+        padding: 8px 6px;
+        font-size: 12px;
+      }
+      .settings-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        margin: 14px 0 20px;
+        text-align: left;
+      }
+      .setting-row {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .setting-header {
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        color: var(--cream);
+      }
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--gold);
+        cursor: pointer;
       }
     </style>
   </head>
   <body>
-    <div id="hud">
-      <div class="hud-title">Đảo Đèn Lồng · Đêm 1: Đảo Bến</div>
-      <div class="hud-row">
-        <span class="hud-label">Ngọn lửa (Máu)</span>
-        <span class="hud-val" id="hud-flames">♥ ♥ ♥</span>
+    <div id="hud-root" class="hidden">
+      <div id="hud-top-left" class="hud-card">
+        <div id="hud-night-title">Đêm 1 · Đảo Bến</div>
+        <div id="hud-flames">♥ ♥ ♥</div>
+        <div id="hud-charm-pill" class="hud-pill"></div>
+        <div id="hud-wind-pill" class="hud-pill"></div>
       </div>
-      <div class="hud-row">
-        <span class="hud-label">Đom đóm mang</span>
-        <span class="hud-val" id="hud-carried">0 / 5</span>
+
+      <div id="hud-top-center">
+        <div id="hud-time" class="hud-card">05:00</div>
+        <div id="status-banner"></div>
       </div>
-      <div class="hud-row">
-        <span class="hud-label">Đèn Lồng Lớn</span>
-        <span class="hud-val" id="hud-lanterns">0 / 5</span>
+
+      <div id="hud-top-right">
+        <div id="hud-stats-box" class="hud-card">
+          <div class="stat-item">
+            <span class="stat-label">Đèn Lồng</span>
+            <span class="stat-val" id="hud-lanterns">0 / 5</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Điểm Đêm</span>
+            <span class="stat-val" id="hud-score">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Tổng</span>
+            <span class="stat-val" id="hud-total-score">0</span>
+          </div>
+        </div>
+        <div id="hud-actions">
+          <button id="btn-mute" type="button">Âm thanh: Bật (M)</button>
+          <button id="btn-pause-hud" type="button">Tạm dừng (Esc)</button>
+        </div>
       </div>
-      <div class="hud-row">
-        <span class="hud-label">Thời gian đêm</span>
-        <span class="hud-val" id="hud-time">05:00</span>
+
+      <div id="hud-bottom-center" class="hud-card">
+        <div id="mote-slots-label">Đom đóm: 0 / 10</div>
+        <div id="mote-slots"></div>
       </div>
-      <div class="hud-row">
-        <span class="hud-label">Điểm số</span>
-        <span class="hud-val" id="hud-score">0</span>
+
+      <div id="hud-bottom-right" class="hud-card">
+        <div class="cd-row">
+          <span class="cd-label">Lướt (Shift)</span>
+          <span class="cd-val" id="hud-dash">Sẵn sàng</span>
+        </div>
+        <div class="cd-row">
+          <span class="cd-label">Tỏa sáng (R)</span>
+          <span class="cd-val" id="hud-pulse">Cần 3 đom đóm</span>
+        </div>
       </div>
-      <div class="hud-row">
-        <span class="hud-label">Tỏa sáng (Pulse)</span>
-        <span class="hud-val" id="hud-pulse">Cần 1 đom đóm</span>
+
+      <div id="controls" class="hud-card">
+        <strong>Điều khiển:</strong> WASD/Mũi tên · Chuột kéo/Q,C: Xoay · Space: Nhảy · Shift:
+        Lướt · E/F: Nạp đèn · R/Chuột phải: Tỏa sáng · Esc/P: Tạm dừng
+      </div>
+
+      <div id="interact-prompt">E — Nạp ánh sáng (0/10)</div>
+
+      <div id="offscreen-arrow">
+        <div class="arrow-shape"></div>
       </div>
     </div>
 
-    <div id="top-right">
-      <button id="btn-mute" type="button">Âm thanh: Bật (M)</button>
-      <button id="btn-restart-hud" type="button">Chơi lại</button>
-    </div>
-
-    <div id="status-banner"></div>
-
-    <div id="controls">
-      <strong>Điều khiển:</strong> WASD / Mũi tên: Di chuyển · Kéo chuột hoặc Q/C: Xoay camera ·
-      Space: Nhảy · E/F: Nạp đèn · R/Shift: Tỏa sáng · M: Âm thanh
-    </div>
-
-    <div id="overlay">
-      <div class="modal">
-        <h2 id="modal-title">Chiến thắng!</h2>
+    <div id="overlay" class="open">
+      <div class="modal" id="modal-card">
+        <h2 id="modal-title">Đảo Đèn Lồng</h2>
+        <div class="modal-subtitle" id="modal-subtitle">Quần đảo ánh sáng giữa biển mây</div>
         <p id="modal-body"></p>
-        <button class="modal-btn" id="btn-play-again" type="button">Chơi lại</button>
+        <div class="settings-panel" id="settings-panel" style="display: none">
+          <div class="setting-row">
+            <div class="setting-header">
+              <span>Âm lượng</span>
+              <span id="setting-vol-val">70%</span>
+            </div>
+            <input id="setting-vol" type="range" min="0" max="100" step="1" value="70" />
+          </div>
+          <div class="setting-row">
+            <div class="setting-header">
+              <span>Độ nhạy chuột</span>
+              <span id="setting-sens-val">1.00x</span>
+            </div>
+            <input id="setting-sens" type="range" min="20" max="250" step="5" value="100" />
+          </div>
+          <button id="btn-settings-mute" class="modal-btn secondary" type="button">
+            Tắt / Bật âm thanh
+          </button>
+        </div>
+        <div class="modal-actions" id="modal-actions"></div>
       </div>
     </div>
 

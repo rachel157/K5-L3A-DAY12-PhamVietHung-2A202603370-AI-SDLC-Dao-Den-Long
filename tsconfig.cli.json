@@ -8,5 +8,5 @@
     "rootDir": "src",
     "types": ["node"]
   },
-  "include": ["src/core/**/*.ts", "src/cli/**/*.ts"]
+  "include": ["src/core/**/*.ts", "src/cli/**/*.ts", "src/web/settings.ts"]
 }
