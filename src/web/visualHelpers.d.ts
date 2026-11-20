@@ -79,3 +79,5 @@ export function getLowFuelHudStatus(
   shades: ReadonlyArray<{ state: string }>,
   lowFuelThreshold: number
 ): LowFuelHudStatus;
+
+export function computeBenchCameraPos(elapsedSec: number): Vec3Tuple;

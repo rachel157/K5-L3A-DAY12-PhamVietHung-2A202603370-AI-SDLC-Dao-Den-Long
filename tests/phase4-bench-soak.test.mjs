@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { createBenchWorld, stepBenchWorld } from "../dist-cli/core/game.js";
 import { computeBenchMetrics } from "../dist-cli/core/benchMetrics.js";
+import { computeBenchCameraPos } from "../src/web/visualHelpers.js";
 
 test("createBenchWorld spawns 200 wander shades, 100 motes, L1-L3 lit fuel=100, and stepBenchWorld disables damage/pickup/decay/win", () => {
   const w1 = createBenchWorld(42);
@@ -101,4 +102,20 @@ test("soak CLI runs multi-night headless soak test deterministically with zero c
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+test("computeBenchCameraPos orbits (0,0,0) at R=30, Y=15 CCW every 15s and bench CLI validates args", () => {
+  const p0 = computeBenchCameraPos(0);
+  assert.ok(Math.abs(p0[0] - 30) < 1e-6 && p0[1] === 15 && Math.abs(p0[2]) < 1e-6);
+
+  const pQuarter = computeBenchCameraPos(3.75);
+  assert.ok(Math.abs(pQuarter[0]) < 1e-6 && pQuarter[1] === 15 && Math.abs(pQuarter[2] + 30) < 1e-6);
+
+  const pFull = computeBenchCameraPos(15);
+  assert.ok(Math.abs(pFull[0] - 30) < 1e-6 && pFull[1] === 15 && Math.abs(pFull[2]) < 1e-6);
+
+  const badRes = spawnSync(process.execPath, ["dist-cli/cli/bench.js", "--seed", "42"], {
+    encoding: "utf8",
+  });
+  assert.notEqual(badRes.status, 0);
 });

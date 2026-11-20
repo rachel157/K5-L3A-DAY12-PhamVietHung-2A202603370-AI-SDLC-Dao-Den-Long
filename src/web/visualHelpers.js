@@ -175,3 +175,13 @@ export function getLowFuelHudStatus(lanterns, shades, lowFuelThreshold) {
     badgeText: null,
   };
 }
+
+/**
+ * Contract v1.3 benchmark camera orbit:
+ * radius 30m around (0,0,0), height Y=15m, starting at (30,15,0),
+ * rotating CCW viewed from above (+Y) every 15 seconds.
+ */
+export function computeBenchCameraPos(elapsedSec) {
+  const theta = (elapsedSec / 15) * Math.PI * 2;
+  return [30 * Math.cos(theta), 15, -30 * Math.sin(theta)];
+}

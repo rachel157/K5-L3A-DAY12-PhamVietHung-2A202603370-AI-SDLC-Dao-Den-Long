@@ -1,12 +1,13 @@
 import * as THREE from "three";
 import { DT_SEC, TICKS_PER_SEC } from "../core/contract.js";
-import { createGameWorld, stepGameWorld, toSnapshot } from "../core/game.js";
+import { createBenchWorld, createGameWorld, stepBenchWorld, stepGameWorld, toSnapshot } from "../core/game.js";
 import type { GameEvent, GameWorld, NightNumber } from "../core/types.js";
 import { GameAudio } from "./audio.js";
 import { loadSettings, saveSettings } from "./settings.js";
 import { GameUI, NIGHT_METADATA } from "./ui.js";
 import {
   applyPauseResumeAction,
+  computeBenchCameraPos,
   computeOffscreenLanternArrow,
   handleControlKeyDown,
 } from "./visualHelpers.js";
@@ -67,6 +68,86 @@ function findUrgentArrowTargetPos(world: GameWorld): [number, number, number] | 
   return bestUnlitPos ?? bestWeakPos;
 }
 
+function runBenchmarkMode(
+  renderer: THREE.WebGLRenderer,
+  camera: THREE.PerspectiveCamera,
+  worldRenderer: WorldSceneRenderer,
+  seed: number,
+  durationSec: number
+): void {
+  const overlayEl = document.getElementById("overlay");
+  const hudRootEl = document.getElementById("hud-root");
+  if (overlayEl) overlayEl.classList.remove("open");
+  if (hudRootEl) hudRootEl.classList.add("hidden");
+
+  const benchWorld = createBenchWorld(seed);
+  worldRenderer.rebuildForWorld(benchWorld);
+
+  const gl = renderer.getContext();
+  const debugExt = gl.getExtension("WEBGL_debug_renderer_info");
+  const glRenderer = debugExt
+    ? String(gl.getParameter(debugExt.UNMASKED_RENDERER_WEBGL))
+    : String(gl.getParameter(gl.RENDERER));
+  const rendererLabel = `Three.js r${THREE.REVISION} WebGLRenderer (${glRenderer})`;
+
+  const warmupSec = 3;
+  const totalSec = warmupSec + durationSec;
+  const dtListMs: number[] = [];
+  let accumulator = 0;
+  let sentLoaded = false;
+  let sentResult = false;
+  let startMs = 0;
+  let lastMs = 0;
+
+  function benchFrame(nowMs: number): void {
+    if (sentResult) return;
+    if (startMs === 0) {
+      startMs = nowMs;
+      lastMs = nowMs;
+    }
+    const dtMs = nowMs - lastMs;
+    lastMs = nowMs;
+    const elapsedSec = (nowMs - startMs) / 1000;
+
+    if (elapsedSec >= warmupSec && elapsedSec < totalSec && dtMs > 0) {
+      dtListMs.push(dtMs);
+    }
+
+    accumulator += Math.min(dtMs / 1000, 0.1);
+    while (accumulator >= DT_SEC) {
+      stepBenchWorld(benchWorld);
+      accumulator -= DT_SEC;
+    }
+
+    const [cx, cy, cz] = computeBenchCameraPos(elapsedSec);
+    camera.position.set(cx, cy, cz);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld();
+
+    worldRenderer.sync(benchWorld, elapsedSec, Math.min(dtMs / 1000, 0.1), camera.position);
+    renderer.render(worldRenderer.scene, camera);
+
+    if (!sentLoaded) {
+      sentLoaded = true;
+      fetch("/__bench_loaded", { method: "POST" }).catch(() => {});
+    }
+
+    if (elapsedSec >= totalSec) {
+      sentResult = true;
+      fetch("/__bench_result", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dtListMs, renderer: rendererLabel }),
+      }).catch(() => {});
+      return;
+    }
+
+    requestAnimationFrame(benchFrame);
+  }
+
+  requestAnimationFrame(benchFrame);
+}
+
 function startApp(): void {
   let renderer: THREE.WebGLRenderer;
   try {
@@ -90,6 +171,19 @@ function startApp(): void {
   document.body.appendChild(renderer.domElement);
 
   const worldRenderer = new WorldSceneRenderer();
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get("bench") === "1") {
+    const benchSeed = Number(urlParams.get("seed") ?? 42);
+    const benchDuration = Number(urlParams.get("duration") ?? 30);
+    runBenchmarkMode(
+      renderer,
+      camera,
+      worldRenderer,
+      Number.isInteger(benchSeed) ? benchSeed : 42,
+      Number.isFinite(benchDuration) && benchDuration > 0 ? benchDuration : 30
+    );
+    return;
+  }
   let settings = loadSettings();
   const audio = new GameAudio(settings.volume);
 
