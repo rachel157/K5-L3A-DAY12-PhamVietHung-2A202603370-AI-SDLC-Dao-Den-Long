@@ -7,16 +7,16 @@
 ## 1. Kết quả Build & Test Suite
 
 - **Lệnh build:** `npm run build` (`tsc -p tsconfig.cli.json` + `tsc -p tsconfig.web.json && vite build`)
-  - **Kết quả:** Thành công (`exit 0`), bundle Vite tạo `dist/index.html` (`9.53 kB`) và `dist/assets/index-Dixi8Y_U.js` (`626.78 kB`, built in `315ms`).
+  - **Kết quả:** Thành công (`exit 0`), bundle Vite tạo `dist/index.html` (`9.53 kB`) và `dist/assets/index-B9P8ZWLa.js` (`626.87 kB`, built in `296ms`).
 - **Lệnh kiểm thử:** `npm test` (`npm run build:cli && node --test`)
-  - **Kết quả:** **44 / 44 subtests PASS (`0 fail`, `0 skipped`, `~3.49s`)** trên các nhóm kiểm thử:
+  - **Kết quả:** **44 / 44 subtests PASS (`0 fail`, `0 skipped`, `~3.67s`)** trên các nhóm kiểm thử:
     - `tests/contract-sync.test.mjs` — `game.contract.json` (`contract_version: "1.1"`) khớp 1:1 với `DEFAULT_TUNING`.
     - `tests/core-boundary.test.mjs` — `src/core/` không có `three`, DOM, `process`, `Math.random`, `Date.now`.
     - `tests/maps-terrain.test.mjs` — Bản đồ 3 Đêm (`Đảo Bến`, `Đảo Cau`, `Đảo Chuông`), `spawnPos` đứng đất, Đêm 2 cầu tre/2 đảo/vực, Đêm 3 dốc kín mép `r=24`, chặn vách đứng, Tháp Chuông `r=2.0`.
     - `tests/core-game.test.mjs` — Hồi quy toàn bộ PRD-0 theo thông số chuẩn Ticket-02 (`6.0 m/s`, nhảy `7.0 m/s`, sức chứa `10`, nạp đèn `10` & `+10/mote` + `+100/lantern`, `Pulse` 3D `<= 5m` choáng `120` tick, vùng an toàn `6m`, đom đóm rơi `ttl=480`, bất tử `90` tick, điểm số & thắng/thua).
     - `tests/phase2-features.test.mjs` — Lướt `14 m/s` (`12` tick, `90` tick hồi chiêu), Bùa Gió (`7.2 m/s`, Lướt `0` hồi chiêu, tái sinh `2700` tick), Rơi `Y < -10` (bỏ qua bất tử, mất hết `carried`, hồi sinh `60` tick), Bục nhảy + Lướt trên không Đêm 2, Gió mạnh + Dốc + Bục nhảy Đêm 3, Đẩy Bóng Mực bên trong `6m` trong `<= 30` tick, Gió Lạc (cướp/trốn/thả khi Pulse), Tạm dừng `Pause/Resume` đóng băng `sim_tick` & `TTL`, benchmark `21.600` tick.
     - `tests/cli-headless.test.mjs` — CLI Contract v1.1 (`--night 1|2|3`, exit `1`/`2`, schema `drifters`/`charms`/`wind_enabled`/`dash`/`pause`).
-    - `tests/web-helpers.test.mjs` & `tests/web-ui-settings.test.mjs` — Khóa hướng Bóng Mực `+Z`, `Space`/nút HUD, `loadSettings`/`saveSettings` (`localStorage`), mũi tên chỉ đèn ngoài màn hình.
+    - `tests/web-helpers.test.mjs` & `tests/web-ui-settings.test.mjs` — Khóa hướng Bóng Mực `+Z`, `Space`/nút HUD, `loadSettings`/`saveSettings` (`localStorage`), mũi tên chỉ đèn ngoài màn hình, `applyPauseResumeAction` an toàn khi `pause -> resume -> pause` hoặc trùng `game_over`.
     - `tests/stop-hook.test.mjs` & `tests/cp0-packaging.test.mjs` — Harness Stop hook và chạy thật các lệnh CLI trong `README.md` & `verify-phase/SKILL.md` bằng shell bản địa.
 
 ---

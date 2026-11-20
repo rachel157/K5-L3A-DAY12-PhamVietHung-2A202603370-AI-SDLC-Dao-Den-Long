@@ -75,22 +75,26 @@ export function computeOffscreenLanternArrow(
  * forwarding all emitted events to `onEvents` so terminal transitions never softlock.
  */
 export function applyPauseResumeAction(world, action, camYawDeg, stepWorld, onEvents) {
-  const patch = {
+  const basePatch = {
     move: [0, 0],
     cam_yaw_deg: camYawDeg,
     jump: false,
     dash: false,
     interact: false,
     pulse: false,
-    pause: true,
   };
   if (action === "pause" && world.state === "playing") {
-    onEvents(stepWorld(world, patch));
+    if (world.prevInput?.pause) {
+      onEvents(stepWorld(world, { ...basePatch, pause: false }));
+    }
+    if (world.state === "playing") {
+      onEvents(stepWorld(world, { ...basePatch, pause: true }));
+    }
     if (world.state === "paused") {
-      onEvents(stepWorld(world, { ...patch, pause: false }));
+      onEvents(stepWorld(world, { ...basePatch, pause: false }));
     }
   } else if (action === "resume" && world.state === "paused") {
-    onEvents(stepWorld(world, patch));
+    onEvents(stepWorld(world, { ...basePatch, pause: true }));
   }
   return world.state;
 }

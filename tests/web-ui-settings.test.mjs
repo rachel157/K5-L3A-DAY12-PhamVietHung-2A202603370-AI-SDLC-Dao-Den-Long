@@ -88,4 +88,15 @@ test("applyPauseResumeAction zeroes stale inputs and surfaces game_over without 
   assert.ok(collected.some((e) => e.name === "resumed"));
   assert.ok(collected.some((e) => e.name === "game_over"), "dawn on resume tick must emit game_over");
   assert.equal(nextState, "lost");
+
+  // Rapid sub-frame pause -> resume -> pause (no intervening frame()) clears pause latch cleanly
+  const world2 = createGameWorld({
+    seed: 1,
+    night: 1,
+    scenario: { random_motes: false, random_shades: false },
+  });
+  const evs2 = [];
+  assert.equal(applyPauseResumeAction(world2, "pause", 0, stepGameWorld, (e) => evs2.push(...e)), "paused");
+  assert.equal(applyPauseResumeAction(world2, "resume", 0, stepGameWorld, (e) => evs2.push(...e)), "playing");
+  assert.equal(applyPauseResumeAction(world2, "pause", 0, stepGameWorld, (e) => evs2.push(...e)), "paused");
 });

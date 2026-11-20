@@ -200,6 +200,55 @@ test("lit lantern pushes inside shades out to >= 6m within 30 ticks without dama
 });
 
 test("shade wander/chase 12m/18m hysteresis and dropped mote 480-tick expiry work", () => {
+  // 12m wander->chase detect threshold
+  const detectLines = runHeadlessSimulation({
+    seed: 1,
+    night: 1,
+    scenario: {
+      player: { pos: [0, 0, 0], carried: 0, flames: 3 },
+      random_motes: false,
+      random_shades: false,
+      shades: [{ id: "S1", pos: [12.5, 0.8, 0], state: "wander" }],
+    },
+    frames: [
+      { tick: 0, move: [1, 0] }, // closes within <= 12m of S1
+      { tick: 12, move: [0, 0] },
+    ],
+    maxTicks: 20,
+    snapshotEvery: 1,
+  });
+  const snap1Det = detectLines.find((l) => l.type === "snapshot" && l.tick === 1);
+  assert.equal(snap1Det.shades[0].state, "wander");
+  const snap10Det = detectLines.find((l) => l.type === "snapshot" && l.tick === 10);
+  assert.equal(snap10Det.shades[0].state, "chase", "shade switches wander -> chase within 12m");
+
+  // Default 480-tick dropped mote expiry (hit at tick 1, then shelter in lit lantern at z=-10)
+  const ttlLines = runHeadlessSimulation({
+    seed: 1,
+    night: 1,
+    scenario: {
+      player: { pos: [0, 0, 0], carried: 2, flames: 3 },
+      random_motes: false,
+      random_shades: false,
+      lanterns: [{ id: "L1", pos: [0, 0, -10], lit: true }],
+      shades: [{ id: "S1", pos: [0, 0.8, 0.8], state: "chase" }],
+    },
+    frames: [
+      { tick: 2, move: [0, -1] }, // run -Z out of drop ring into L1 safe zone
+      { tick: 105, move: [0, 0] },
+    ],
+    maxTicks: 485,
+    snapshotEvery: 1,
+  });
+  const snap1Ttl = ttlLines.find((l) => l.type === "snapshot" && l.tick === 1);
+  assert.equal(snap1Ttl.motes.filter((m) => m.kind === "dropped").length, 1);
+  assert.equal(snap1Ttl.motes[0].ttl_s, 8, "dropped motes default to 480 ticks (8.0s)");
+  const snap480Ttl = ttlLines.find((l) => l.type === "snapshot" && l.tick === 480);
+  assert.equal(snap480Ttl.motes.length, 1, "dropped mote persists through tick 480");
+  const snap481Ttl = ttlLines.find((l) => l.type === "snapshot" && l.tick === 481);
+  assert.equal(snap481Ttl.motes.length, 0, "dropped mote expires after 480 ticks");
+
+  // 18m chase->wander hysteresis
   const lines = runHeadlessSimulation({
     seed: 1,
     night: 1,
@@ -217,7 +266,6 @@ test("shade wander/chase 12m/18m hysteresis and dropped mote 480-tick expiry wor
     snapshotEvery: 1,
   });
 
-  // At tick 1 shade is at 14m (< 18m) so stays chase; once player runs past > 18m it switches back to wander
   const snap1 = lines.find((l) => l.type === "snapshot" && l.tick === 1);
   assert.equal(snap1.shades[0].state, "chase");
   assert.equal(snap1.motes.length, 1);
@@ -379,10 +427,14 @@ test("Drifters (Gió Lạc) steal motes, flee -> removed, and drop stolen motes 
     },
     frames: [{ tick: 0, pulse: true }],
     maxTicks: 1202,
-    snapshotEvery: 1200,
+    snapshotEvery: 1,
   });
+  const snap1Sched = schedLines.find((l) => l.type === "snapshot" && l.tick === 1);
+  assert.equal(snap1Sched.drifters[0].state, "flee", "pulse turns chase Drifter to flee");
+  const snap1199 = schedLines.find((l) => l.type === "snapshot" && l.tick === 1199);
   const snap1200 = schedLines.find((l) => l.type === "snapshot" && l.tick === 1200);
-  assert.ok(snap1200.drifters.length >= 2, "scheduled Drifter must spawn at tick 1200");
+  assert.equal(snap1199.drifters.length, 1);
+  assert.equal(snap1200.drifters.length, 2, "scheduled Drifter must spawn at tick 1200");
 });
 
 test("fall_enabled=false disables fall damage and zero-tick scenario drifter/charm normalize cleanly", () => {
